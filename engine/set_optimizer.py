@@ -528,20 +528,86 @@ def generate_practical_lotto_set(
         max_pair_overlap=2,
     )
 
-    # 엄격한 조건에서 게임 수가 부족할 때만 완화
-    if len(combinations) < target_count:
-        combinations, details = select_diverse_set(
+    # =====================================================
+    # 요청한 게임 수를 반드시 채우는 단계별 완화 방식
+    # =====================================================
+
+    best_combinations: List[List[int]] = []
+    best_details: List[Dict] = []
+
+    relaxation_levels = [
+        (2, 2),  # 번호 최대 2회, 게임 간 중복 최대 2개
+        (3, 3),  # 1차 완화
+        (4, 4),  # 2차 완화
+        (5, 5),  # 3차 완화
+        (target_count, 6),  # 최종 안전장치
+    ]
+
+    for repeat_limit, overlap_limit in relaxation_levels:
+        (
+            trial_combinations,
+            trial_details,
+        ) = select_diverse_set(
             candidate_pool=candidate_pool,
             candidate_details=candidate_details,
             target_game_count=target_count,
-            max_number_repeat=3,
-            max_pair_overlap=3,
+            max_number_repeat=repeat_limit,
+            max_pair_overlap=overlap_limit,
         )
+
+        if len(trial_combinations) > len(best_combinations):
+            best_combinations = trial_combinations
+            best_details = trial_details
+
+        if len(best_combinations) >= target_count:
+            break
+
+    combinations = list(best_combinations)
+    details = list(best_details)
+
+    # 최적화 조건으로도 부족하면
+    # 후보풀의 중복되지 않은 조합으로 남은 게임을 채웁니다.
+    if len(combinations) < target_count:
+        selected_keys = {
+            tuple(clean_combination(combination))
+            for combination in combinations
+        }
+
+        for candidate_index, candidate in enumerate(candidate_pool):
+            cleaned_candidate = clean_combination(candidate)
+
+            if len(cleaned_candidate) != 6:
+                continue
+
+            candidate_key = tuple(cleaned_candidate)
+
+            if candidate_key in selected_keys:
+                continue
+
+            combinations.append(cleaned_candidate)
+            selected_keys.add(candidate_key)
+
+            if candidate_index < len(candidate_details):
+                fallback_detail = dict(
+                    candidate_details[candidate_index]
+                )
+            else:
+                fallback_detail = {}
+
+            fallback_detail["세트선택점수"] = 0.0
+            fallback_detail["자동보충조합"] = True
+
+            details.append(fallback_detail)
+
+            if len(combinations) >= target_count:
+                break
+
+    combinations = combinations[:target_count]
+    details = details[:target_count]
 
     summary = set_summary(
         combinations
     )
-
     return (
         combinations,
         details,
