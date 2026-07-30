@@ -744,25 +744,24 @@ else:
             )
 
         weights = [
-    weight_5,
-    weight_10,
-    weight_30,
-    weight_100,
-    weight_overdue,
-    weight_trend,
-    weight_carry,
-    weight_adjacent,
-    weight_ending,
-    weight_50,
-    weight_all,
-]
+            weight_5,
+            weight_10,
+            weight_30,
+            weight_100,
+            weight_overdue,
+            weight_trend,
+            weight_carry,
+            weight_adjacent,
+            weight_ending,
+            weight_50,
+            weight_all,
+        ]
 
-score_df = calculate_eleven_scores(
-    df=df,
-    number_columns=number_columns,
-    weights=weights,
-)
-
+        score_df = calculate_eleven_scores(
+            df=df,
+            number_columns=number_columns,
+            weights=weights,
+        )
         st.divider()
 
         st.subheader("🏆 종합점수 상위 15개 생존 후보")
