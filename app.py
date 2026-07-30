@@ -8,12 +8,12 @@ import streamlit as st
 from engine.scoring import calculate_eleven_scores
 
 # =========================================================
-# LOTTO GPT V25.3
+# LOTTO GPT V25.4
 # Excel 실제 데이터 기반 기초 분석 대시보드
 # =========================================================
 
 st.set_page_config(
-    page_title="LOTTO GPT V25.3",
+    page_title="LOTTO GPT V25.4",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -475,34 +475,121 @@ def generate_combinations(
     score_df: pd.DataFrame,
     game_count: int,
     candidate_count: int,
+    fixed_numbers: Optional[List[int]] = None,
+    excluded_numbers: Optional[List[int]] = None,
     seed: Optional[int] = None,
 ) -> List[List[int]]:
-    """상위 후보군에서 점수 비례 방식으로 추천 조합을 생성합니다."""
+    """
+    상위 후보군에서 점수 비례 방식으로 추천 조합을 생성합니다.
+
+    fixed_numbers:
+        모든 조합에 반드시 포함할 번호
+
+    excluded_numbers:
+        모든 조합에서 제외할 번호
+    """
+
+    fixed_numbers = sorted(set(fixed_numbers or []))
+    excluded_numbers = sorted(set(excluded_numbers or []))
+
+    if len(fixed_numbers) > 5:
+        raise ValueError("고정수는 최대 5개까지 선택할 수 있습니다.")
+
+    overlap = set(fixed_numbers) & set(excluded_numbers)
+
+    if overlap:
+        overlap_text = ", ".join(
+            str(number)
+            for number in sorted(overlap)
+        )
+
+        raise ValueError(
+            f"고정수와 제외수에 같은 번호가 있습니다: {overlap_text}"
+        )
 
     candidate_df = score_df.head(candidate_count).copy()
 
-    candidate_numbers = candidate_df["번호"].astype(int).to_numpy()
-    probabilities = candidate_df["종합점수"].astype(float).to_numpy()
+    candidate_df = candidate_df[
+        ~candidate_df["번호"].isin(excluded_numbers)
+    ].copy()
 
-    probabilities = np.clip(probabilities, 0.01, None)
+    # 고정수가 후보군 밖에 있더라도 조합에 사용할 수 있도록 추가
+    missing_fixed = [
+        number
+        for number in fixed_numbers
+        if number not in candidate_df["번호"].astype(int).tolist()
+    ]
+
+    if missing_fixed:
+        fixed_rows = score_df[
+            score_df["번호"].isin(missing_fixed)
+        ]
+
+        candidate_df = pd.concat(
+            [candidate_df, fixed_rows],
+            ignore_index=True,
+        ).drop_duplicates(
+            subset=["번호"],
+            keep="first",
+        )
+
+    available_df = candidate_df[
+        ~candidate_df["번호"].isin(fixed_numbers)
+    ].copy()
+
+    needed_count = 6 - len(fixed_numbers)
+
+    if len(available_df) < needed_count:
+        raise ValueError(
+            "고정수와 제외수 설정 때문에 조합을 만들 번호가 부족합니다. "
+            "제외수를 줄이거나 후보 번호 수를 늘려주세요."
+        )
+
+    candidate_numbers = (
+        available_df["번호"]
+        .astype(int)
+        .to_numpy()
+    )
+
+    probabilities = (
+        available_df["종합점수"]
+        .astype(float)
+        .to_numpy()
+    )
+
+    probabilities = np.clip(
+        probabilities,
+        0.01,
+        None,
+    )
+
     probabilities = probabilities / probabilities.sum()
 
     rng = np.random.default_rng(seed)
 
     combinations: List[List[int]] = []
     attempts = 0
-    max_attempts = 5000
+    max_attempts = 10000
 
-    while len(combinations) < game_count and attempts < max_attempts:
+    while (
+        len(combinations) < game_count
+        and attempts < max_attempts
+    ):
         attempts += 1
 
-        selected = sorted(
+        selected_extra = (
             rng.choice(
                 candidate_numbers,
-                size=6,
+                size=needed_count,
                 replace=False,
                 p=probabilities,
-            ).astype(int).tolist()
+            )
+            .astype(int)
+            .tolist()
+        )
+
+        selected = sorted(
+            fixed_numbers + selected_extra
         )
 
         if not valid_combination(selected):
@@ -511,19 +598,36 @@ def generate_combinations(
         if selected not in combinations:
             combinations.append(selected)
 
-    # 조건 때문에 부족한 경우 완화해 추가
-    while len(combinations) < game_count:
-        selected = sorted(
+    # 조건이 너무 엄격해 부족하면 균형 조건만 완화해 추가
+    while (
+        len(combinations) < game_count
+        and attempts < max_attempts * 2
+    ):
+        attempts += 1
+
+        selected_extra = (
             rng.choice(
                 candidate_numbers,
-                size=6,
+                size=needed_count,
                 replace=False,
                 p=probabilities,
-            ).astype(int).tolist()
+            )
+            .astype(int)
+            .tolist()
+        )
+
+        selected = sorted(
+            fixed_numbers + selected_extra
         )
 
         if selected not in combinations:
             combinations.append(selected)
+
+    if len(combinations) < game_count:
+        raise ValueError(
+            "현재 조건으로 필요한 조합 수를 만들지 못했습니다. "
+            "고정수 또는 제외수를 줄여주세요."
+        )
 
     return combinations
 
@@ -532,7 +636,7 @@ def generate_combinations(
 # 제목
 # =========================================================
 
-st.title("🎯 LOTTO GPT V25.3")
+st.title("🎯 LOTTO GPT V25.4")
 st.markdown(
     """
     <div class="notice-card">
@@ -652,7 +756,44 @@ candidate_count = st.sidebar.slider(
     max_value=25,
     value=18,
 )
+st.sidebar.divider()
 
+st.sidebar.header("🎯 조합 세부 설정")
+
+number_options = list(range(1, 46))
+
+fixed_numbers = st.sidebar.multiselect(
+    "고정수 선택 — 최대 5개",
+    options=number_options,
+    default=[],
+    max_selections=5,
+    help="선택한 번호는 생성되는 모든 조합에 포함됩니다.",
+)
+
+excluded_numbers = st.sidebar.multiselect(
+    "제외수 선택",
+    options=number_options,
+    default=[],
+    help="선택한 번호는 모든 추천 조합에서 제외됩니다.",
+)
+
+if fixed_numbers:
+    st.sidebar.success(
+        "고정수: "
+        + ", ".join(
+            str(number)
+            for number in fixed_numbers
+        )
+    )
+
+if excluded_numbers:
+    st.sidebar.warning(
+        "제외수: "
+        + ", ".join(
+            str(number)
+            for number in excluded_numbers
+        )
+    )
 fixed_seed = st.sidebar.checkbox(
     "같은 결과 재현",
     value=True,
@@ -795,6 +936,8 @@ else:
                 score_df=score_df,
                 game_count=game_count,
                 candidate_count=candidate_count,
+                fixed_numbers=fixed_numbers,
+                excluded_numbers=excluded_numbers,
                 seed=seed,
             )
 
