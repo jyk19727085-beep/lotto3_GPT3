@@ -5,6 +5,7 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from engine.scoring import calculate_eleven_scores
 
 # =========================================================
 # LOTTO GPT V25.2
@@ -700,15 +701,25 @@ else:
                 hide_index=True,
             )
 
-        score_df = calculate_scores(
-            df=df,
-            number_columns=number_columns,
-            weight_recent=weight_recent,
-            weight_medium=weight_medium,
-            weight_long=weight_long,
-            weight_overdue=weight_overdue,
-            weight_trend=weight_trend,
-        )
+        weights = [
+    weight_recent,
+    weight_medium,
+    weight_long,
+    weight_overdue,
+    weight_trend,
+    10,
+    10,
+    10,
+    10,
+    10,
+    10,
+]
+
+score_df = calculate_eleven_scores(
+    df=df,
+    number_columns=number_columns,
+    weights=weights,
+)
 
         st.divider()
 
