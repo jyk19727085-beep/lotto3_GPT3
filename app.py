@@ -8,12 +8,12 @@ import streamlit as st
 from engine.scoring import calculate_eleven_scores
 
 # =========================================================
-# LOTTO GPT V25.2
+# LOTTO GPT V25.3
 # Excel 실제 데이터 기반 기초 분석 대시보드
 # =========================================================
 
 st.set_page_config(
-    page_title="LOTTO GPT V25.2",
+    page_title="LOTTO GPT V25.3",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -532,7 +532,7 @@ def generate_combinations(
 # 제목
 # =========================================================
 
-st.title("🎯 LOTTO GPT V25.2")
+st.title("🎯 LOTTO GPT V25.3")
 st.markdown(
     """
     <div class="notice-card">
@@ -559,38 +559,80 @@ uploaded_file = st.sidebar.file_uploader(
 
 st.sidebar.divider()
 
-st.sidebar.header("⚙️ 분석 가중치")
+st.sidebar.header("⚙️ 11대 분석 가설")
 
-weight_recent = st.sidebar.slider(
-    "최근 10회 빈도",
+weight_5 = st.sidebar.slider(
+    "① 최근 5회 초단기 빈도",
+    min_value=0,
+    max_value=100,
+    value=20,
+)
+
+weight_10 = st.sidebar.slider(
+    "② 최근 10회 단기 빈도",
     min_value=0,
     max_value=100,
     value=30,
 )
 
-weight_medium = st.sidebar.slider(
-    "최근 30회 빈도",
+weight_30 = st.sidebar.slider(
+    "③ 최근 30회 중기 빈도",
     min_value=0,
     max_value=100,
     value=25,
 )
 
-weight_long = st.sidebar.slider(
-    "최근 100회 빈도",
+weight_100 = st.sidebar.slider(
+    "④ 최근 100회 장기 빈도",
     min_value=0,
     max_value=100,
     value=15,
 )
 
 weight_overdue = st.sidebar.slider(
-    "장기 미출현",
+    "⑤ 장기 미출현 회귀",
     min_value=0,
     max_value=100,
     value=20,
 )
 
 weight_trend = st.sidebar.slider(
-    "최근 상승추세",
+    "⑥ 최근 상승추세",
+    min_value=0,
+    max_value=100,
+    value=15,
+)
+
+weight_carry = st.sidebar.slider(
+    "⑦ 직전 회차 이월수",
+    min_value=0,
+    max_value=100,
+    value=10,
+)
+
+weight_adjacent = st.sidebar.slider(
+    "⑧ 직전 번호 인접수",
+    min_value=0,
+    max_value=100,
+    value=15,
+)
+
+weight_ending = st.sidebar.slider(
+    "⑨ 최근 끝수 패턴",
+    min_value=0,
+    max_value=100,
+    value=10,
+)
+
+weight_50 = st.sidebar.slider(
+    "⑩ 최근 50회 안정 빈도",
+    min_value=0,
+    max_value=100,
+    value=15,
+)
+
+weight_all = st.sidebar.slider(
+    "⑪ 전체 회차 누적 빈도",
     min_value=0,
     max_value=100,
     value=10,
@@ -702,17 +744,17 @@ else:
             )
 
         weights = [
-    weight_recent,
-    weight_medium,
-    weight_long,
+    weight_5,
+    weight_10,
+    weight_30,
+    weight_100,
     weight_overdue,
     weight_trend,
-    10,
-    10,
-    10,
-    10,
-    10,
-    10,
+    weight_carry,
+    weight_adjacent,
+    weight_ending,
+    weight_50,
+    weight_all,
 ]
 
 score_df = calculate_eleven_scores(
