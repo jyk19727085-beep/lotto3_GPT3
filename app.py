@@ -1207,7 +1207,6 @@ else:
     minimum_spatial_score=minimum_spatial_score,
     random_seed=seed,
 )
-            )
 
             if not combinations:
                 st.warning(
