@@ -1,73 +1,99 @@
 import streamlit as st
+import pandas as pd
 import numpy as np
-import random
+
 
 st.set_page_config(
-    page_title="LOTTO GPT V25.0",
+    page_title="LOTTO GPT V25.1",
     layout="wide"
 )
 
-st.title("🎯 LOTTO GPT V25.0")
-st.write("AI 가중치 기반 로또 분석 테스트")
 
-st.sidebar.header("가설 가중치")
+st.title("🎯 LOTTO GPT V25.1")
+st.subheader("AI 로또 데이터 분석 엔진")
 
-weights = []
 
-for i in range(1, 12):
+# =========================
+# 엑셀 업로드
+# =========================
 
-    w = st.sidebar.slider(
+st.sidebar.header("📂 데이터 입력")
 
-        f"가설 {i}",
 
-        0,
+uploaded_file = st.sidebar.file_uploader(
+    "로또 회차 엑셀 업로드",
+    type=["xlsx"]
+)
 
-        100,
 
-        50
+if uploaded_file:
 
+    df = pd.read_excel(uploaded_file)
+
+
+    st.success("엑셀 데이터 로딩 완료")
+
+
+    st.write("데이터 미리보기")
+
+    st.dataframe(
+        df.head(),
+        use_container_width=True
     )
 
-    weights.append(w)
+
+    st.divider()
 
 
-def generate_numbers(weights):
+    # =========================
+    # 번호 빈도 분석
+    # =========================
 
-    prob = np.array(weights)
 
-    seed = sum(weights)
+    st.subheader("📊 번호 출현 빈도 분석")
 
-    np.random.seed(seed)
 
-    numbers = sorted(
+    numbers = []
 
-        random.sample(
 
-            range(1, 46),
+    for col in df.columns:
 
-            6
+        if "번호" in str(col):
 
-        )
+            numbers.extend(
+                df[col].dropna().astype(int).tolist()
+            )
 
+
+    freq = pd.Series(numbers).value_counts()
+
+
+    result = pd.DataFrame(
+        {
+            "번호":freq.index,
+            "출현횟수":freq.values
+        }
     )
 
-    return numbers
+
+    st.bar_chart(
+        result,
+        x="번호",
+        y="출현횟수"
+    )
 
 
-if st.button("번호 생성"):
+    st.subheader("🔥 TOP 10 빈도 번호")
 
-    nums = generate_numbers(weights)
 
-    cols = st.columns(6)
+    top10 = result.head(10)
 
-    for i, n in enumerate(nums):
 
-        cols[i].metric(
+    st.dataframe(top10)
 
-            label=f"No.{i+1}",
 
-            value=str(n)
+else:
 
-        )
-
-    st.success("생성 완료!")
+    st.info(
+        "왼쪽 메뉴에서 로또 분석용 엑셀 파일을 업로드하세요."
+    )
