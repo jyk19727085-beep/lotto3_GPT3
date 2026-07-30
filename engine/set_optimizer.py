@@ -506,17 +506,17 @@ def generate_practical_lotto_set(
             excluded_numbers=excluded_numbers,
             historical_draws=historical_draws,
             temperature=temperature,
-            candidate_trials=max(
-                int(candidate_trials),
-                8000,
-            ),
+            candidate_trials=min(
+    max(int(candidate_trials), 2000),
+    5000,
+),
             minimum_spatial_score=minimum_spatial_score,
             random_seed=random_seed,
-            pool_rounds=20,
-            combinations_per_round=max(
-                10,
-                target_count * 2,
-            ),
+            pool_rounds=4,
+           combinations_per_round=max(
+    6,
+    target_count,
+),
         )
     )
 
