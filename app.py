@@ -18,7 +18,9 @@ from engine.diversity import (
     combination_features,
     generate_balanced_combinations,
 )
-
+from engine.set_optimizer import (
+    generate_practical_lotto_set,
+)
 
 # =========================================================
 # LOTTO GPT V26.0
@@ -1190,97 +1192,23 @@ else:
                 else None
             )
 
-            combinations, details = (
-                generate_balanced_combinations(
-                    number_scores=number_scores,
-                    game_count=game_count,
-                    fixed_numbers=fixed_numbers,
-                    excluded_numbers=final_excluded_numbers,
-                    historical_draws=draws,
-                    temperature=temperature,
-                    candidate_trials=candidate_trials,
-                    minimum_spatial_score=minimum_spatial_score,
-                    random_seed=seed,
-                )
+            (
+    combinations,
+    details,
+    set_summary,
+) = generate_practical_lotto_set(
+    number_scores=number_scores,
+    game_count=game_count,
+    fixed_numbers=fixed_numbers,
+    excluded_numbers=final_excluded_numbers,
+    historical_draws=draws,
+    temperature=temperature,
+    candidate_trials=candidate_trials,
+    minimum_spatial_score=minimum_spatial_score,
+    random_seed=seed,
+)
             )
-# =====================================================
-# 추천번호가 5게임 미만이면 자동으로 추가 생성
-# =====================================================
-            
-            target_game_count = 5
-            
-            collected_combinations = [
-                sorted(int(number) for number in combination)
-                for combination in combinations
-            ]
-            
-            collected_details = list(details)
-            
-            for retry_index in range(1, 21):
-            
-                if len(collected_combinations) >= target_game_count:
-                    break
-            
-                remaining_count = (
-                    target_game_count
-                    - len(collected_combinations)
-                )
-            
-                retry_seed = (
-                    int(seed) + retry_index * 101
-                    if seed is not None
-                    else None
-                )
-            
-                (
-                    extra_combinations,
-                    extra_details,
-                ) = generate_balanced_combinations(
-                    number_scores=number_scores,
-                    game_count=remaining_count,
-                    fixed_numbers=fixed_numbers,
-                    excluded_numbers=final_excluded_numbers,
-                    historical_draws=draws,
-                    temperature=max(float(temperature), 1.50),
-                    candidate_trials=max(
-                        int(candidate_trials),
-                        15000,
-                    ),
-                    minimum_spatial_score=min(
-                        int(minimum_spatial_score),
-                        30,
-                    ),
-                    random_seed=retry_seed,
-                )
-            
-                for extra_index, extra_combination in enumerate(
-                    extra_combinations
-                ):
-                    clean_extra = sorted(
-                        int(number)
-                        for number in extra_combination
-                    )
-            
-                    if clean_extra in collected_combinations:
-                        continue
-            
-                    collected_combinations.append(
-                        clean_extra
-                    )
-            
-                    if extra_index < len(extra_details):
-                        collected_details.append(
-                            extra_details[extra_index]
-                        )
-                    else:
-                        collected_details.append({})
-            
-                    if len(collected_combinations) >= target_game_count:
-                        break
-            
-            
-            combinations = collected_combinations[:target_game_count]
-            details = collected_details[:target_game_count]
+
             if not combinations:
                 st.warning(
                     "현재 후보 수와 균형조건으로 추천 조합을 "
