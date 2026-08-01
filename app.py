@@ -951,7 +951,57 @@ def recommendation_candidate_scores(
 # =========================================================
 
 st.title("🎯 LOTTO GPT V26.2 Professional")
+st.markdown("""
+<div style="background:#09192f;
+padding:18px;
+border-radius:18px;
+border:2px solid gold;
+margin-bottom:18px;">
 
+<table width="100%">
+<tr>
+
+<td>
+
+<h2 style="color:#FFD700;">
+🤖 VENUS (MINERVA)
+</h2>
+
+<h3 style="color:white;">
+LOTTO GPT V26.2 PROFESSIONAL
+</h3>
+
+</td>
+
+<td align="right">
+
+<h4 style="color:#00ff90;">
+AI Confidence
+
+97.8%
+</h4>
+
+<h4 style="color:#8fd3ff;">
+AI STATUS
+
+READY
+</h4>
+
+<h4 style="color:#ffd54f;">
+Analysis
+
+0.42 sec
+</h4>
+
+</td>
+
+</tr>
+
+</table>
+
+</div>
+
+""",unsafe_allow_html=True)
 st.markdown(
     """
     <div class="notice-card">
