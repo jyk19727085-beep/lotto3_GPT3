@@ -44,103 +44,500 @@ st.set_page_config(
 st.markdown(
     """
     <style>
+
+    /* ==================================================
+       V26.2 PROFESSIONAL — 전체 배경
+       ================================================== */
+
     .stApp {
         background:
-            linear-gradient(
-                rgba(15, 23, 42, 0.92),
-                rgba(15, 23, 42, 0.97)
+            radial-gradient(
+                circle at 15% 15%,
+                rgba(37, 99, 235, 0.22),
+                transparent 32%
             ),
-            url("https://images.unsplash.com/photo-1566041510394-cf7c8d049f17?q=80&w=1600&auto=format&fit=crop");
-        background-size: cover;
+            radial-gradient(
+                circle at 85% 10%,
+                rgba(250, 204, 21, 0.16),
+                transparent 30%
+            ),
+            radial-gradient(
+                circle at 50% 90%,
+                rgba(124, 58, 237, 0.18),
+                transparent 35%
+            ),
+            linear-gradient(
+                135deg,
+                #020617 0%,
+                #0f172a 45%,
+                #111827 100%
+            );
         background-attachment: fixed;
-        background-position: center;
+        color: #f8fafc;
     }
 
+    [data-testid="stHeader"] {
+        background: rgba(2, 6, 23, 0.30);
+        backdrop-filter: blur(12px);
+    }
+
+    [data-testid="stSidebar"] {
+        background:
+            linear-gradient(
+                180deg,
+                rgba(2, 6, 23, 0.98),
+                rgba(15, 23, 42, 0.98)
+            );
+        border-right: 1px solid rgba(250, 204, 21, 0.22);
+    }
+
+    [data-testid="stSidebar"] > div:first-child {
+        padding-top: 1rem;
+    }
+
+
+    /* ==================================================
+       메인 글래스 컨테이너
+       ================================================== */
+
     .block-container {
-        background: rgba(255, 255, 255, 0.07);
-        backdrop-filter: blur(18px);
-        border: 1px solid rgba(255, 215, 0, 0.20);
-        border-radius: 20px;
+        width: min(96%, 1500px);
+        max-width: 1500px;
+        background:
+            linear-gradient(
+                145deg,
+                rgba(255, 255, 255, 0.075),
+                rgba(255, 255, 255, 0.025)
+            );
+        backdrop-filter: blur(22px);
+        -webkit-backdrop-filter: blur(22px);
+        border: 1px solid rgba(250, 204, 21, 0.18);
+        border-radius: 24px;
         padding: 2rem;
         margin-top: 1rem;
         margin-bottom: 2rem;
+        box-shadow:
+            0 25px 70px rgba(0, 0, 0, 0.48),
+            inset 0 1px 0 rgba(255, 255, 255, 0.08);
+        animation: containerEnter 0.75s ease-out;
     }
 
-    h1, h2, h3 {
+    @keyframes containerEnter {
+        from {
+            opacity: 0;
+            transform: translateY(16px);
+        }
+        to {
+            opacity: 1;
+            transform: translateY(0);
+        }
+    }
+
+
+    /* ==================================================
+       제목과 글자
+       ================================================== */
+
+    h1 {
+        color: #ffffff !important;
+        text-align: center;
+        font-weight: 950 !important;
+        letter-spacing: -0.04em;
+        text-shadow:
+            0 0 10px rgba(250, 204, 21, 0.55),
+            0 0 28px rgba(250, 204, 21, 0.30);
+        animation: titleGlow 2.4s ease-in-out infinite alternate;
+    }
+
+    h2, h3 {
         color: #f8fafc !important;
+        font-weight: 850 !important;
     }
 
     p, label, div {
         word-break: keep-all;
     }
 
+    @keyframes titleGlow {
+        from {
+            text-shadow:
+                0 0 8px rgba(250, 204, 21, 0.42),
+                0 0 18px rgba(250, 204, 21, 0.20);
+        }
+        to {
+            text-shadow:
+                0 0 14px rgba(250, 204, 21, 0.82),
+                0 0 38px rgba(250, 204, 21, 0.44);
+        }
+    }
+
+
+    /* ==================================================
+       로또공
+       ================================================== */
+
     .lotto-row {
         display: flex;
         flex-wrap: wrap;
-        gap: 10px;
+        gap: 11px;
         align-items: center;
-        margin: 10px 0 18px 0;
+        justify-content: flex-start;
+        margin: 12px 0 20px 0;
     }
 
     .lotto-ball {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 52px;
-        height: 52px;
+        width: 54px;
+        height: 54px;
+        flex: 0 0 54px;
         border-radius: 50%;
-        color: white;
-        font-weight: 900;
-        font-size: 1.25rem;
+        color: #ffffff;
+        font-weight: 950;
+        font-size: 1.28rem;
+        border: 2px solid rgba(255, 255, 255, 0.28);
         box-shadow:
-            inset -4px -4px 7px rgba(0,0,0,0.35),
-            2px 4px 8px rgba(0,0,0,0.35);
+            inset -5px -6px 9px rgba(0, 0, 0, 0.34),
+            inset 4px 4px 7px rgba(255, 255, 255, 0.20),
+            0 5px 12px rgba(0, 0, 0, 0.45);
+        text-shadow: 0 2px 3px rgba(0, 0, 0, 0.55);
+        animation: ballAppear 0.45s ease-out both;
+        transition:
+            transform 0.20s ease,
+            filter 0.20s ease;
     }
+
+    .lotto-ball:hover {
+        transform: translateY(-4px) scale(1.07);
+        filter: brightness(1.13);
+    }
+
+    @keyframes ballAppear {
+        from {
+            opacity: 0;
+            transform: scale(0.55) rotate(-16deg);
+        }
+        to {
+            opacity: 1;
+            transform: scale(1) rotate(0);
+        }
+    }
+
+
+    /* ==================================================
+       추천 결과 카드
+       ================================================== */
 
     .result-card {
-        background: rgba(15, 23, 42, 0.78);
-        border: 1px solid rgba(255, 215, 0, 0.28);
-        border-radius: 14px;
-        padding: 16px;
-        margin-bottom: 12px;
+        background:
+            linear-gradient(
+                135deg,
+                rgba(15, 23, 42, 0.94),
+                rgba(30, 41, 59, 0.82)
+            );
+        border: 1px solid rgba(250, 204, 21, 0.28);
+        border-radius: 18px;
+        padding: 18px;
+        margin-bottom: 15px;
+        box-shadow:
+            0 12px 30px rgba(0, 0, 0, 0.34),
+            inset 0 1px 0 rgba(255, 255, 255, 0.07);
+        animation: cardSlide 0.55s ease-out both;
+        transition:
+            transform 0.22s ease,
+            border-color 0.22s ease,
+            box-shadow 0.22s ease;
     }
 
+    .result-card:hover {
+        transform: translateY(-3px);
+        border-color: rgba(250, 204, 21, 0.62);
+        box-shadow:
+            0 16px 38px rgba(0, 0, 0, 0.44),
+            0 0 22px rgba(250, 204, 21, 0.11);
+    }
+
+    @keyframes cardSlide {
+        from {
+            opacity: 0;
+            transform: translateX(-18px);
+        }
+        to {
+            opacity: 1;
+            transform: translateX(0);
+        }
+    }
+
+
+    /* ==================================================
+       안내·엔진 상태 카드
+       ================================================== */
+
     .notice-card {
-        background: rgba(255, 215, 0, 0.09);
-        border: 1px solid rgba(255, 215, 0, 0.25);
-        border-radius: 12px;
-        padding: 15px;
+        position: relative;
+        overflow: hidden;
+        background:
+            linear-gradient(
+                120deg,
+                rgba(250, 204, 21, 0.13),
+                rgba(37, 99, 235, 0.12),
+                rgba(124, 58, 237, 0.12)
+            );
+        border: 1px solid rgba(250, 204, 21, 0.30);
+        border-radius: 16px;
+        padding: 17px;
         color: #f8fafc;
+        box-shadow: 0 10px 28px rgba(0, 0, 0, 0.25);
+    }
+
+    .notice-card::before {
+        content: "";
+        position: absolute;
+        top: 0;
+        left: -120%;
+        width: 60%;
+        height: 100%;
+        background:
+            linear-gradient(
+                90deg,
+                transparent,
+                rgba(255, 255, 255, 0.12),
+                transparent
+            );
+        animation: shineMove 4.2s linear infinite;
+    }
+
+    @keyframes shineMove {
+        0% {
+            left: -120%;
+        }
+        55%,
+        100% {
+            left: 150%;
+        }
     }
 
     .engine-card {
-        background: rgba(30, 41, 59, 0.76);
-        border-left: 5px solid #fbc02d;
-        border-radius: 12px;
-        padding: 14px 16px;
-        margin: 10px 0;
+        background:
+            linear-gradient(
+                135deg,
+                rgba(15, 23, 42, 0.90),
+                rgba(30, 41, 59, 0.78)
+            );
+        border-left: 5px solid #facc15;
+        border-radius: 14px;
+        padding: 15px 17px;
+        margin: 11px 0;
         color: #f8fafc;
+        box-shadow: 0 9px 24px rgba(0, 0, 0, 0.28);
     }
 
     .confidence-high {
         color: #4ade80;
-        font-weight: 800;
+        font-weight: 900;
     }
 
     .confidence-middle {
         color: #facc15;
-        font-weight: 800;
+        font-weight: 900;
     }
 
     .confidence-low {
         color: #fb7185;
-        font-weight: 800;
+        font-weight: 900;
     }
+
+
+    /* ==================================================
+       Streamlit 버튼
+       ================================================== */
+
+    .stButton > button {
+        min-height: 3.4rem;
+        border-radius: 14px !important;
+        border: 1px solid rgba(250, 204, 21, 0.62) !important;
+        background:
+            linear-gradient(
+                110deg,
+                #a16207,
+                #eab308,
+                #facc15,
+                #ca8a04
+            ) !important;
+        background-size: 240% 240% !important;
+        color: #111827 !important;
+        font-weight: 950 !important;
+        font-size: 1.06rem !important;
+        box-shadow:
+            0 8px 24px rgba(234, 179, 8, 0.30),
+            0 0 22px rgba(250, 204, 21, 0.14);
+        animation:
+            buttonGradient 3.4s ease infinite,
+            buttonPulse 2.0s ease-in-out infinite;
+        transition:
+            transform 0.20s ease,
+            box-shadow 0.20s ease;
+    }
+
+    .stButton > button:hover {
+        transform: translateY(-2px) scale(1.01);
+        box-shadow:
+            0 12px 30px rgba(234, 179, 8, 0.42),
+            0 0 34px rgba(250, 204, 21, 0.24);
+    }
+
+    @keyframes buttonGradient {
+        0% {
+            background-position: 0% 50%;
+        }
+        50% {
+            background-position: 100% 50%;
+        }
+        100% {
+            background-position: 0% 50%;
+        }
+    }
+
+    @keyframes buttonPulse {
+        0%,
+        100% {
+            filter: brightness(1);
+        }
+        50% {
+            filter: brightness(1.12);
+        }
+    }
+
+
+    /* ==================================================
+       지표·표·입력창
+       ================================================== */
+
+    [data-testid="stMetric"] {
+        background: rgba(15, 23, 42, 0.72);
+        border: 1px solid rgba(148, 163, 184, 0.18);
+        border-radius: 14px;
+        padding: 14px;
+        box-shadow: 0 8px 22px rgba(0, 0, 0, 0.24);
+    }
+
+    [data-testid="stMetricValue"] {
+        color: #facc15;
+        font-weight: 900;
+    }
+
+    [data-testid="stDataFrame"] {
+        overflow-x: auto;
+        border-radius: 14px;
+    }
+
+    [data-testid="stFileUploader"] {
+        border-radius: 14px;
+    }
+
+
+    /* ==================================================
+       모바일·태블릿 반응형
+       ================================================== */
+
+    @media (max-width: 900px) {
+        .block-container {
+            width: 98%;
+            padding: 1.15rem;
+            margin-top: 0.45rem;
+            border-radius: 17px;
+        }
+
+        h1 {
+            font-size: clamp(1.65rem, 7vw, 2.35rem) !important;
+            line-height: 1.18 !important;
+        }
+
+        h2 {
+            font-size: 1.35rem !important;
+        }
+
+        h3 {
+            font-size: 1.13rem !important;
+        }
+
+        .lotto-row {
+            gap: 8px;
+            justify-content: center;
+        }
+
+        .lotto-ball {
+            width: 46px;
+            height: 46px;
+            flex-basis: 46px;
+            font-size: 1.08rem;
+        }
+
+        .result-card {
+            padding: 14px 11px;
+            border-radius: 15px;
+        }
+
+        .notice-card,
+        .engine-card {
+            padding: 13px;
+        }
+
+        .stButton > button {
+            min-height: 3.7rem;
+            font-size: 1rem !important;
+        }
+    }
+
+    @media (max-width: 430px) {
+        .block-container {
+            padding: 0.82rem;
+        }
+
+        .lotto-row {
+            gap: 5px;
+            flex-wrap: nowrap;
+            justify-content: center;
+        }
+
+        .lotto-ball {
+            width: 41px;
+            height: 41px;
+            flex: 0 0 41px;
+            font-size: 0.96rem;
+            border-width: 1px;
+        }
+
+        .result-card {
+            padding: 12px 8px;
+        }
+
+        [data-testid="stMetric"] {
+            padding: 10px;
+        }
+
+        [data-testid="stMetricValue"] {
+            font-size: 1.3rem;
+        }
+    }
+
+
+    /* 사용자가 기기에서 애니메이션 축소를 설정한 경우 */
+    @media (prefers-reduced-motion: reduce) {
+        *,
+        *::before,
+        *::after {
+            animation-duration: 0.01ms !important;
+            animation-iteration-count: 1 !important;
+            scroll-behavior: auto !important;
+        }
+    }
+
     </style>
     """,
     unsafe_allow_html=True,
 )
-
 
 # =========================================================
 # 공통 화면 함수
