@@ -1801,21 +1801,21 @@ else:
                         f"구간 {section_text}"
                     )
 
-                    st.caption(
-                        f"공간분산 "
-                        f"{features['공간분산점수']:.1f}점 · "
-                        f"균형 "
-                        f"{balance_score:.1f}점 · "
-                        f"품질 "
-                        f"{quality_score:.2f} · "
-                        f"연속쌍 "
-                        f"{features['연속쌍']}개"
-                    )
+                st.caption(
+                    f"공간분산 "
+                    f"{features['공간분산점수']:.1f}점 · "
+                    f"균형 "
+                    f"{balance_score:.1f}점 · "
+                    f"품질 "
+                    f"{quality_score:.2f} · "
+                    f"연속쌍 "
+                    f"{features['연속쌍']}개"
+                )
 
-                    st.markdown(
-                        "</div>",
-                        unsafe_allow_html=True,
-                    )
+                st.markdown(
+                    "</div>",
+                    unsafe_allow_html=True,
+                )
 
               st.success(
     "🏆 VENUS(MINERVA) AI 추천 조합 생성이 완료되었습니다. 🍀"
