@@ -1788,9 +1788,9 @@ else:
     """,
     unsafe_allow_html=True,
 )
-                    render_balls(combination)
+                render_balls(combination)
 
-                    st.caption(
+                st.caption(
                         f"합계 {features['합계']} · "
                         f"홀짝 "
                         f"{features['홀수수']}:"
