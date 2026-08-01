@@ -1751,14 +1751,43 @@ else:
                         ]
                     )
 
-                    st.markdown(
-                        (
-                            "<div class='result-card'>"
-                            f"<b>SET {index:02d}</b>"
-                        ),
-                        unsafe_allow_html=True,
-                    )
+                st.markdown(
+    f"""
+    <div class="result-card">
+        <div style="
+            display:flex;
+            justify-content:space-between;
+            align-items:center;
+            gap:10px;
+            flex-wrap:wrap;
+        ">
+            <div style="
+                color:#facc15;
+                font-size:1.25rem;
+                font-weight:900;
+            ">
+                🏆 SET {index:02d}
+            </div>
 
+            <div style="
+                color:#4ade80;
+                font-weight:800;
+            ">
+                품질 {quality_score:.2f}점
+            </div>
+        </div>
+
+        <div style="
+            margin-top:6px;
+            color:#e2e8f0;
+            font-size:0.92rem;
+        ">
+            균형 {balance_score:.1f}점 ·
+            공간분산 {features['공간분산점수']:.1f}점
+        </div>
+    """,
+    unsafe_allow_html=True,
+)
                     render_balls(combination)
 
                     st.caption(
@@ -1788,9 +1817,9 @@ else:
                         unsafe_allow_html=True,
                     )
 
-                st.success(
-                    "V26 균형 추천 조합 생성이 완료되었습니다."
-                )
+              st.success(
+    "🏆 VENUS(MINERVA) AI 추천 조합 생성이 완료되었습니다. 🍀"
+)
 
         st.divider()
 
