@@ -1717,111 +1717,109 @@ else:
                 )
 
                 for index, combination in enumerate(
-                    combinations,
-                    start=1,
-                ):
-                    features = combination_features(
-                        combination
-                    )
+            combinations,
+            start=1,
+        ):
+            features = combination_features(
+                combination
+            )
 
-                    detail = (
-                        details[index - 1]
-                        if index - 1 < len(details)
-                        else {}
-                    )
+            detail = (
+                details[index - 1]
+                if index - 1 < len(details)
+                else {}
+            )
 
-                    quality_score = float(
-                        detail.get(
-                            "최종품질점수",
-                            0.0,
-                        )
-                    )
-
-                    balance_score = float(
-                        detail.get(
-                            "균형점수",
-                            0.0,
-                        )
-                    )
-
-                    section_text = "-".join(
-                        str(value)
-                        for value in features[
-                            "구간분포"
-                        ]
-                    )
-
-                st.markdown(
-    f"""
-    <div class="result-card">
-        <div style="
-            display:flex;
-            justify-content:space-between;
-            align-items:center;
-            gap:10px;
-            flex-wrap:wrap;
-        ">
-            <div style="
-                color:#facc15;
-                font-size:1.25rem;
-                font-weight:900;
-            ">
-                🏆 SET {index:02d}
-            </div>
-
-            <div style="
-                color:#4ade80;
-                font-weight:800;
-            ">
-                품질 {quality_score:.2f}점
-            </div>
-        </div>
-
-        <div style="
-            margin-top:6px;
-            color:#e2e8f0;
-            font-size:0.92rem;
-        ">
-            균형 {balance_score:.1f}점 ·
-            공간분산 {features['공간분산점수']:.1f}점
-        </div>
-    """,
-    unsafe_allow_html=True,
-)
-                render_balls(combination)
-
-                st.caption(
-                        f"합계 {features['합계']} · "
-                        f"홀짝 "
-                        f"{features['홀수수']}:"
-                        f"{features['짝수수']} · "
-                        f"저고 "
-                        f"{features['저번호수']}:"
-                        f"{features['고번호수']} · "
-                        f"구간 {section_text}"
-                    )
-
-                st.caption(
-                    f"공간분산 "
-                    f"{features['공간분산점수']:.1f}점 · "
-                    f"균형 "
-                    f"{balance_score:.1f}점 · "
-                    f"품질 "
-                    f"{quality_score:.2f} · "
-                    f"연속쌍 "
-                    f"{features['연속쌍']}개"
+            quality_score = float(
+                detail.get(
+                    "최종품질점수",
+                    0.0,
                 )
+            )
 
-                st.markdown(
-                    "</div>",
-                    unsafe_allow_html=True,
+            balance_score = float(
+                detail.get(
+                    "균형점수",
+                    0.0,
                 )
+            )
 
-              st.success(
-    "🏆 VENUS(MINERVA) AI 추천 조합 생성이 완료되었습니다. 🍀"
-)
+            section_text = "-".join(
+                str(value)
+                for value in features["구간분포"]
+            )
 
-        st.divider()
+            st.markdown(
+                f"""
+                <div class="result-card">
+                    <div style="
+                        display:flex;
+                        justify-content:space-between;
+                        align-items:center;
+                        gap:10px;
+                        flex-wrap:wrap;
+                    ">
+                        <div style="
+                            color:#facc15;
+                            font-size:1.25rem;
+                            font-weight:900;
+                        ">
+                            🏆 SET {index:02d}
+                        </div>
+
+                        <div style="
+                            color:#4ade80;
+                            font-weight:800;
+                        ">
+                            품질 {quality_score:.2f}점
+                        </div>
+                    </div>
+
+                    <div style="
+                        margin-top:6px;
+                        color:#e2e8f0;
+                        font-size:0.92rem;
+                    ">
+                        균형 {balance_score:.1f}점 ·
+                        공간분산 {features['공간분산점수']:.1f}점
+                    </div>
+                """,
+                unsafe_allow_html=True,
+            )
+
+            render_balls(combination)
+
+            st.caption(
+                f"합계 {features['합계']} · "
+                f"홀짝 "
+                f"{features['홀수수']}:"
+                f"{features['짝수수']} · "
+                f"저고 "
+                f"{features['저번호수']}:"
+                f"{features['고번호수']} · "
+                f"구간 {section_text}"
+            )
+
+            st.caption(
+                f"공간분산 "
+                f"{features['공간분산점수']:.1f}점 · "
+                f"균형 "
+                f"{balance_score:.1f}점 · "
+                f"품질 "
+                f"{quality_score:.2f} · "
+                f"연속쌍 "
+                f"{features['연속쌍']}개"
+            )
+
+            st.markdown(
+                "</div>",
+                unsafe_allow_html=True,
+            )
+
+                st.success(
+                    "🏆 VENUS(MINERVA) AI 추천 조합 생성이 완료되었습니다. 🍀"
+                )
+            st.divider()
 
         left, right = st.columns(
             [1.3, 1]
