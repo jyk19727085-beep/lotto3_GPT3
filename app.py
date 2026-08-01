@@ -950,7 +950,7 @@ def recommendation_candidate_scores(
 # 제목
 # =========================================================
 
-st.title("🎯 LOTTO GPT V26.0")
+st.title("🎯 LOTTO GPT V26.2 Professional")
 
 st.markdown(
     """
@@ -967,7 +967,40 @@ st.markdown(
 
 st.write("")
 
+st.markdown("""
+<div style="
+background:linear-gradient(90deg,#0f172a,#1e293b);
+padding:20px;
+border-radius:15px;
+margin-bottom:20px;
+border:2px solid #fbbf24;
+box-shadow:0 0 20px rgba(251,191,36,.4);
+">
 
+<h2 style="color:#FFD700;margin:0;">
+🤖 VENUS (MINERVA) AI ENGINE
+</h2>
+
+<h4 style="color:white;">
+LOTTO GPT V26.2 PROFESSIONAL
+</h4>
+
+<hr>
+
+<p style="color:#8ef58e;">
+🟢 AI 분석엔진 : READY
+</p>
+
+<p style="color:#6ec6ff;">
+📊 데이터 분석 완료
+</p>
+
+<p style="color:#ffd54f;">
+🎯 추천번호 생성 준비 완료
+</p>
+
+</div>
+""", unsafe_allow_html=True)
 # =========================================================
 # 사이드바
 # =========================================================
