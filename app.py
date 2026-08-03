@@ -1,3 +1,4 @@
+import textwrap
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -1759,7 +1760,7 @@ else:
                             )
                 
                             st.markdown(
-                                f"""
+    textwrap.dedent(f"""
                                 <div class="result-card">
                                     <div style="
                                         display:flex;
@@ -1790,7 +1791,7 @@ else:
                                         font-size:0.92rem;
                                     ">
                                         균형 {balance_score:.1f}점 ·
-                                        공간분산 {features['공간분산점수']:.1f}점
+                                         {features['점수']:.1f}점
                                     </div>
                                 """,
                                 unsafe_allow_html=True,
