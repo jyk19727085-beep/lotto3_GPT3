@@ -1074,6 +1074,7 @@ uploaded_file = st.sidebar.file_uploader(
     type=["xlsx"],
 )
 
+sheet_selector_placeholder = st.sidebar.empty()
 st.sidebar.divider()
 
 st.sidebar.header("⚙️ 기존 11대 분석가설")
@@ -1374,7 +1375,7 @@ else:
             else 0
         )
 
-        selected_sheet = st.sidebar.selectbox(
+        selected_sheet = sheet_selector_placeholder.selectbox(
             "분석할 엑셀 시트 선택",
             options=sheet_names,
             index=default_sheet_index,
