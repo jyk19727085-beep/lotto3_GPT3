@@ -1790,8 +1790,8 @@ else:
                                         color:#e2e8f0;
                                         font-size:0.92rem;
                                     ">
-                                        균형 {balance_score:.1f}점 ·
-                                         {features['점수']:.1f}점
+                                      균형 {balance_score:.1f}점 ·
+공간분산 {features.get('공간분산점수', 0.0):.1f}점
                                     </div>
                                """),
 unsafe_allow_html=True,
