@@ -1369,30 +1369,30 @@ else:
 
         sheet_names = excel_file.sheet_names
 
-            preferred_sheet_names = [
-        "당첨번호",
-        "회차별",
-        "번호별",
-        "Sheet1",
-    ]
-    
-    default_sheet_index = 0
-    
-    for sheet in preferred_sheet_names:
-        if sheet in sheet_names:
-            default_sheet_index = sheet_names.index(sheet)
-            break
-            
-            selected_sheet = sheet_selector_placeholder.selectbox(
-                "분석할 엑셀 시트 선택",
-                options=sheet_names,
-                index=default_sheet_index,
-            )
-    
-            raw_df = pd.read_excel(
-                uploaded_file,
-                sheet_name=selected_sheet,
-            )
+        preferred_sheet_names = [
+    "당첨번호",
+    "회차별",
+    "번호별",
+    "Sheet1",
+]
+
+        default_sheet_index = 0
+        
+        for sheet in preferred_sheet_names:
+            if sheet in sheet_names:
+                default_sheet_index = sheet_names.index(sheet)
+                break
+        
+        selected_sheet = sheet_selector_placeholder.selectbox(
+            "분석할 엑셀 시트 선택",
+            options=sheet_names,
+            index=default_sheet_index,
+        )
+
+        raw_df = pd.read_excel(
+            uploaded_file,
+            sheet_name=selected_sheet,
+        )
     
             (
                 df,
