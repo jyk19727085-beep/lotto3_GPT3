@@ -252,14 +252,37 @@ st.markdown(
         border-color 0.20s ease,
         box-shadow 0.20s ease;
 }
+/* 모바일 추천카드 최적화 */
 @media (max-width: 768px) {
     .result-card {
-        border-radius: 13px;
-        padding: 11px 12px;
-        margin-bottom: 8px;
+        width: 100%;
+        padding: 12px;
+        margin-bottom: 10px;
+        border-radius: 14px;
+        box-sizing: border-box;
+        overflow: hidden;
         box-shadow:
             0 7px 18px rgba(0, 0, 0, 0.24),
             inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    }
+
+    .result-card .lotto-ball {
+        width: 38px !important;
+        height: 38px !important;
+        min-width: 38px !important;
+        font-size: 0.92rem !important;
+        margin: 3px !important;
+    }
+
+    .result-card h3,
+    .result-card h4 {
+        font-size: 1rem !important;
+        line-height: 1.35;
+    }
+
+    .result-card p,
+    .result-card span {
+        line-height: 1.45;
     }
 }
 
