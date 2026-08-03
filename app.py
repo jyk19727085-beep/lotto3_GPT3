@@ -1793,9 +1793,9 @@ else:
                                         균형 {balance_score:.1f}점 ·
                                          {features['점수']:.1f}점
                                     </div>
-                                """,
-                                unsafe_allow_html=True,
-                            )
+                               """),
+unsafe_allow_html=True,
+)
                 
                             render_balls(combination)
                 
