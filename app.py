@@ -1912,11 +1912,11 @@ else:
                         frequency_df
                     )
         
-                       with st.expander(
-            "🧠 V26 분석 엔진 구성"
-        ):
-            st.markdown(
-                """
+                   with st.expander(
+        "🧠 V26 분석 엔진 구성"
+    ):
+        st.markdown(
+            """
 **기존 분석**
 
 1. 최근 5회 초단기 빈도
@@ -1947,8 +1947,8 @@ else:
 - 동일 끝수 제한
 - 구매용지 공간분산
 - 추천 게임 간 번호 중복 감점
-                """
-            )
+            """
+        )
 
         st.warning(
             "이 결과는 과거 회차 데이터의 통계적 특징을 "
