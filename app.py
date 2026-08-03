@@ -1374,7 +1374,7 @@ else:
             else 0
         )
 
-        selected_sheet = st.selectbox(
+        selected_sheet = st.sidebar.selectbox(
             "분석할 엑셀 시트 선택",
             options=sheet_names,
             index=default_sheet_index,
