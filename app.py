@@ -1759,8 +1759,8 @@ else:
                                 for value in features["구간분포"]
                             )
                 
-                            st.markdown(
-    textwrap.dedent(f"""
+                         st.html(
+   f"""
                                 <div class="result-card">
                                     <div style="
                                         display:flex;
@@ -1793,8 +1793,7 @@ else:
                                       균형 {balance_score:.1f}점 ·
 공간분산 {features.get('공간분산점수', 0.0):.1f}점
                                     </div>
-                               """),
-unsafe_allow_html=True,
+                             """
 )
                 
                             render_balls(combination)
