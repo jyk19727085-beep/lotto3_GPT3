@@ -230,26 +230,38 @@ st.markdown(
        추천 결과 카드
        ================================================== */
 
+   .result-card {
+    position: relative;
+    overflow: hidden;
+    background:
+        linear-gradient(
+            135deg,
+            rgba(15, 23, 42, 0.96),
+            rgba(30, 41, 59, 0.88)
+        );
+    border: 1px solid rgba(250, 204, 21, 0.38);
+    border-radius: 16px;
+    padding: 14px 16px;
+    margin-bottom: 10px;
+    box-shadow:
+        0 10px 24px rgba(0, 0, 0, 0.26),
+        inset 0 1px 0 rgba(255, 255, 255, 0.07);
+    animation: cardSlide 0.45s ease-out both;
+    transition:
+        transform 0.20s ease,
+        border-color 0.20s ease,
+        box-shadow 0.20s ease;
+}
+@media (max-width: 768px) {
     .result-card {
-        background:
-            linear-gradient(
-                135deg,
-                rgba(15, 23, 42, 0.94),
-                rgba(30, 41, 59, 0.82)
-            );
-        border: 1px solid rgba(250, 204, 21, 0.28);
-        border-radius: 18px;
-        padding: 18px;
-        margin-bottom: 15px;
+        border-radius: 13px;
+        padding: 11px 12px;
+        margin-bottom: 8px;
         box-shadow:
-            0 12px 30px rgba(0, 0, 0, 0.34),
-            inset 0 1px 0 rgba(255, 255, 255, 0.07);
-        animation: cardSlide 0.55s ease-out both;
-        transition:
-            transform 0.22s ease,
-            border-color 0.22s ease,
-            box-shadow 0.22s ease;
+            0 7px 18px rgba(0, 0, 0, 0.24),
+            inset 0 1px 0 rgba(255, 255, 255, 0.06);
     }
+}
 
     .result-card:hover {
         transform: translateY(-3px);
