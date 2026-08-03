@@ -1758,9 +1758,8 @@ else:
                                 str(value)
                                 for value in features["구간분포"]
                             )
-                
-                         st.html(
-   f"""
+                            st.html(
+                f"""
                                 <div class="result-card">
                                     <div style="
                                         display:flex;
