@@ -1773,39 +1773,79 @@ else:
                             st.html(
                 f"""
                                 <div class="result-card">
-                                    <div style="
-                                        display:flex;
-                                        justify-content:space-between;
-                                        align-items:center;
-                                        gap:10px;
-                                        flex-wrap:wrap;
-                                    ">
-                                        <div style="
-                                            color:#facc15;
-                                            font-size:1.25rem;
-                                            font-weight:900;
-                                        ">
-                                            🏆 SET {index:02d}
-                                        </div>
-                
-                                        <div style="
-                                            color:#4ade80;
-                                            font-weight:800;
-                                        ">
-                                            품질 {quality_score:.2f}점
-                                        </div>
-                                    </div>
-                
-                                    <div style="
-                                        margin-top:6px;
-                                        color:#e2e8f0;
-                                        font-size:0.92rem;
-                                    ">
-                                      균형 {balance_score:.1f}점 ·
-공간분산 {features.get('공간분산점수', 0.0):.1f}점
-                                    </div>
-                             """
-)
+                                                  <div style="
+                    display:flex;
+                    justify-content:space-between;
+                    align-items:center;
+                    gap:10px;
+                    flex-wrap:wrap;
+                    margin-bottom:10px;
+                ">
+                    <div style="
+                        color:#facc15;
+                        font-size:1.15rem;
+                        font-weight:900;
+                        letter-spacing:0.02em;
+                    ">
+                        🏆 SET {index:02d}
+                    </div>
+
+                    <div style="
+                        padding:4px 10px;
+                        border-radius:999px;
+                        background:rgba(250,204,21,0.14);
+                        border:1px solid rgba(250,204,21,0.38);
+                        color:#fde68a;
+                        font-size:0.78rem;
+                        font-weight:800;
+                    ">
+                        PREMIUM
+                    </div>
+                </div>
+
+                <div style="
+                    display:flex;
+                    gap:7px;
+                    flex-wrap:wrap;
+                ">
+                    <span style="
+                        padding:6px 9px;
+                        border-radius:9px;
+                        background:rgba(74,222,128,0.13);
+                        border:1px solid rgba(74,222,128,0.30);
+                        color:#86efac;
+                        font-size:0.84rem;
+                        font-weight:800;
+                    ">
+                        품질 {quality_score:.2f}
+                    </span>
+
+                    <span style="
+                        padding:6px 9px;
+                        border-radius:9px;
+                        background:rgba(56,189,248,0.13);
+                        border:1px solid rgba(56,189,248,0.30);
+                        color:#7dd3fc;
+                        font-size:0.84rem;
+                        font-weight:800;
+                    ">
+                        균형 {balance_score:.1f}
+                    </span>
+
+                    <span style="
+                        padding:6px 9px;
+                        border-radius:9px;
+                        background:rgba(167,139,250,0.13);
+                        border:1px solid rgba(167,139,250,0.30);
+                        color:#c4b5fd;
+                        font-size:0.84rem;
+                        font-weight:800;
+                    ">
+                                   </span>
+                </div>
+                </div>
+                """
+            )
                 
                             render_balls(combination)
                 
@@ -1831,10 +1871,7 @@ else:
                                 f"{features['연속쌍']}개"
                             )
                 
-                            st.markdown(
-                                "</div>",
-                                unsafe_allow_html=True,
-                            )
+                           
         
                         st.success(
                             "🏆 VENUS(MINERVA) AI 추천 조합 생성이 완료되었습니다. 🍀"
