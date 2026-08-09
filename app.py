@@ -1,4 +1,6 @@
 import textwrap
+import itertools
+import re
 from typing import List, Optional, Tuple
 
 import numpy as np
@@ -24,14 +26,14 @@ from engine.set_optimizer import (
 )
 
 # =========================================================
-# LOTTO GPT V26.0
+# LOTTO GPT V27.1 FINAL
 # 15대 분석가설 + 유사후속 + 마킹패턴
 # + 구조전이 + 다양성 조합 생성기
 # =========================================================
 
 
 st.set_page_config(
-    page_title="LOTTO GPT V26.0",
+    page_title="LOTTO GPT V27.1 FINAL",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -634,133 +636,106 @@ def clean_column_name(column: object) -> str:
 # 엑셀 열 자동 탐색
 # =========================================================
 
+def parse_round_values(series: pd.Series) -> pd.Series:
+    """'1236회', '1236 회', 1236 같은 값을 안전하게 회차 숫자로 변환합니다."""
+
+    cleaned = (
+        series.astype(str)
+        .str.extract(r"(\d+)", expand=False)
+    )
+
+    return pd.to_numeric(
+        cleaned,
+        errors="coerce",
+    )
+
+
 def detect_round_column(
     df: pd.DataFrame,
 ) -> Optional[str]:
-    """회차 열로 보이는 열을 자동 탐색합니다."""
+    """회차 열을 이름 + 실제 값 패턴으로 자동 탐색합니다."""
 
-    round_keywords = [
-        "회차",
-        "회",
-        "draw",
-        "round",
-    ]
+    named_candidates = []
 
     for column in df.columns:
-        cleaned = clean_column_name(
-            column
-        ).lower()
+        cleaned = clean_column_name(column).lower()
 
         if any(
             keyword in cleaned
-            for keyword in round_keywords
+            for keyword in ["회차", "round", "draw"]
         ):
-            return column
+            named_candidates.append(column)
 
-    return None
+    if named_candidates:
+        return named_candidates[0]
+
+    # 이름이 불명확한 구형 시트도 실제 값이 '1회, 2회...'인지 확인
+    best_column = None
+    best_score = -1.0
+
+    for column in df.columns:
+        parsed = parse_round_values(df[column])
+        valid = parsed.dropna()
+
+        if len(valid) < 20:
+            continue
+
+        positive_ratio = float((valid > 0).mean())
+        unique_ratio = float(valid.nunique() / max(len(valid), 1))
+        score = positive_ratio * 0.6 + unique_ratio * 0.4
+
+        if score > best_score:
+            best_score = score
+            best_column = column
+
+    return best_column
 
 
 def detect_number_columns(
     df: pd.DataFrame,
 ) -> List[str]:
-    """
-    당첨번호 6개 열을 자동 탐색합니다.
+    """당첨번호 6개 열을 안정적으로 탐색합니다."""
 
-    우선순위:
-    1. 번호·당첨번호·number 등의 열
-    2. 값 대부분이 1~45인 열
-    """
+    # 가장 신뢰도가 높은 표준형: 1P~6P
+    normalized_map = {
+        clean_column_name(column).upper(): column
+        for column in df.columns
+    }
 
-    candidates: List[str] = []
+    standard = []
+    for index in range(1, 7):
+        key = f"{index}P"
+        if key in normalized_map:
+            standard.append(normalized_map[key])
+
+    if len(standard) == 6:
+        return standard
 
     excluded_keywords = [
-        "보너스",
-        "bonus",
-        "회차",
-        "round",
-        "날짜",
-        "date",
-        "합계",
-        "sum",
-        "순위",
-        "당첨금",
-        "당첨자",
-        "간격",
-        "평균",
-        "누적",
-        "빈도",
+        "보너스", "bonus", "회차", "round", "draw",
+        "날짜", "date", "합계", "sum", "total", "aver", "avg",
+        "순위", "당첨금", "당첨자", "간격", "평균", "누적", "빈도",
     ]
 
-    preferred_keywords = [
-        "번호",
-        "당첨",
-        "num",
-        "number",
-        "ball",
-    ]
-
-    # 1차: 열 이름 기준
-    for column in df.columns:
-        cleaned = clean_column_name(
-            column
-        ).lower()
-
-        if any(
-            keyword in cleaned
-            for keyword in excluded_keywords
-        ):
-            continue
-
-        if any(
-            keyword in cleaned
-            for keyword in preferred_keywords
-        ):
-            numeric = pd.to_numeric(
-                df[column],
-                errors="coerce",
-            )
-
-            valid_ratio = (
-                numeric.between(1, 45).mean()
-            )
-
-            if valid_ratio >= 0.5:
-                candidates.append(column)
-
-    if len(candidates) >= 6:
-        return candidates[:6]
-
-    # 2차: 실제 데이터 범위 기준
     candidates = []
 
     for column in df.columns:
-        cleaned = clean_column_name(
-            column
-        ).lower()
+        cleaned = clean_column_name(column).lower()
 
-        if any(
-            keyword in cleaned
-            for keyword in excluded_keywords
-        ):
+        if any(keyword in cleaned for keyword in excluded_keywords):
             continue
 
-        numeric = pd.to_numeric(
-            df[column],
-            errors="coerce",
-        )
+        numeric = pd.to_numeric(df[column], errors="coerce")
+        non_null = numeric.notna()
 
-        non_null_count = int(
-            numeric.notna().sum()
-        )
-
-        if non_null_count == 0:
+        if int(non_null.sum()) < 20:
             continue
 
-        valid_ratio = (
-            numeric.between(1, 45).mean()
-        )
+        valid_ratio = float(numeric[non_null].between(1, 45).mean())
+        unique_count = int(numeric[non_null].nunique())
 
-        if valid_ratio >= 0.8:
+        # 로또번호 열은 대부분 1~45 범위이며 여러 숫자가 반복 출현합니다.
+        if valid_ratio >= 0.95 and unique_count >= 15:
             candidates.append(column)
 
     return candidates[:6]
@@ -773,95 +748,88 @@ def prepare_lotto_data(
     List[str],
     Optional[str],
 ]:
-    """엑셀 데이터를 정리하고 유효한 회차만 남깁니다."""
+    """회차/당첨번호를 정제하고 실제 유효 회차만 반환합니다."""
 
     df = raw_df.copy()
-
-    df.columns = [
-        str(column).strip()
-        for column in df.columns
-    ]
+    df.columns = [str(column).strip() for column in df.columns]
 
     round_column = detect_round_column(df)
     number_columns = detect_number_columns(df)
 
     if len(number_columns) < 6:
         raise ValueError(
-            "당첨번호 6개 열을 자동으로 찾지 못했습니다. "
-            "번호별 시트 또는 회차별 당첨번호가 있는 시트를 "
-            "선택해 주세요."
+            "당첨번호 6개 열을 찾지 못했습니다. "
+            "회차, 1P~6P 구조의 시트를 사용해 주세요."
         )
 
     for column in number_columns:
-        df[column] = pd.to_numeric(
-            df[column],
-            errors="coerce",
-        )
+        df[column] = pd.to_numeric(df[column], errors="coerce")
 
-    df = df.dropna(
-        subset=number_columns
-    ).copy()
+    if round_column is not None:
+        df[round_column] = parse_round_values(df[round_column])
 
+    df = df.dropna(subset=number_columns).copy()
+
+    valid_mask = np.ones(len(df), dtype=bool)
     for column in number_columns:
-        df[column] = (
-            df[column].astype(int)
-        )
-
-    valid_mask = np.ones(
-        len(df),
-        dtype=bool,
-    )
-
-    for column in number_columns:
-        valid_mask &= (
-            df[column].between(1, 45)
-        )
+        valid_mask &= df[column].between(1, 45)
 
     df = df.loc[valid_mask].copy()
 
-    unique_mask = (
-        df[number_columns]
-        .nunique(axis=1)
-        == 6
-    )
-
+    # 한 회차에 같은 번호가 2번 이상 들어간 비정상 행 제거
+    unique_mask = df[number_columns].nunique(axis=1).eq(6)
     df = df.loc[unique_mask].copy()
 
-    # 당첨번호를 회차별로 오름차순 정렬
+    for column in number_columns:
+        df[column] = df[column].astype(int)
+
+    # 번호 오름차순 정리
     sorted_numbers = np.sort(
-        df[number_columns]
-        .astype(int)
-        .to_numpy(),
+        df[number_columns].to_numpy(dtype=int),
         axis=1,
     )
-
     df.loc[:, number_columns] = sorted_numbers
 
     if round_column is not None:
-        df[round_column] = pd.to_numeric(
-            df[round_column],
-            errors="coerce",
-        )
+        df = df.dropna(subset=[round_column]).copy()
+        df[round_column] = df[round_column].astype(int)
 
-        df = df.sort_values(
-            round_column,
-            ascending=True,
-            na_position="first",
+        # 동일 회차 중복행 제거 후 회차순 정렬
+        df = (
+            df.sort_values(round_column)
+            .drop_duplicates(subset=[round_column], keep="last")
         )
 
     df = df.reset_index(drop=True)
 
     if len(df) < 20:
         raise ValueError(
-            "V26 분석에는 최소 20개 이상의 "
-            "유효 회차가 필요합니다."
+            "V26 분석에는 최소 20개 이상의 유효 회차가 필요합니다."
         )
 
-    return (
-        df,
-        number_columns,
-        round_column,
+    return df, number_columns, round_column
+
+
+def sheet_lotto_quality(raw_df: pd.DataFrame) -> Tuple[int, int, int]:
+    """시트 자동선택용 품질점수: 최신회차, 유효행수, 표준열 보너스."""
+
+    try:
+        prepared, nums, round_col = prepare_lotto_data(raw_df)
+    except Exception:
+        return (-1, -1, -1)
+
+    latest = (
+        int(prepared[round_col].max())
+        if round_col is not None and prepared[round_col].notna().any()
+        else len(prepared)
     )
+
+    standard_bonus = int(
+        [clean_column_name(c).upper() for c in nums]
+        == ["1P", "2P", "3P", "4P", "5P", "6P"]
+    )
+
+    return latest, len(prepared), standard_bonus
 
 
 # =========================================================
@@ -983,10 +951,1304 @@ def recommendation_candidate_scores(
 
 
 # =========================================================
+# V27 FINAL - 합계 수열·유사후속 기반 생존번호 추천기
+# =========================================================
+
+def _sequence_features(numbers: List[int]) -> dict:
+    """조합 구조 특징을 계산합니다."""
+    values = sorted(int(n) for n in numbers)
+    total = int(sum(values))
+    odd = sum(n % 2 for n in values)
+    low = sum(n <= 22 for n in values)
+
+    sections = [0, 0, 0, 0, 0]
+    for n in values:
+        if n <= 10:
+            sections[0] += 1
+        elif n <= 20:
+            sections[1] += 1
+        elif n <= 30:
+            sections[2] += 1
+        elif n <= 40:
+            sections[3] += 1
+        else:
+            sections[4] += 1
+
+    thirds = [
+        sum(1 <= n <= 15 for n in values),
+        sum(16 <= n <= 30 for n in values),
+        sum(31 <= n <= 45 for n in values),
+    ]
+
+    adjacent_pairs = sum(
+        1 for a, b in zip(values, values[1:])
+        if b - a == 1
+    )
+
+    endings = [n % 10 for n in values]
+    max_same_ending = max(endings.count(e) for e in set(endings))
+
+    rows = len({(n - 1) // 7 for n in values})
+    cols = len({(n - 1) % 7 for n in values})
+    spatial = round(
+        min(100.0, (rows / 6.0) * 55.0 + (cols / 6.0) * 45.0),
+        2,
+    )
+
+    return {
+        "합계": total,
+        "홀수수": int(odd),
+        "짝수수": int(6 - odd),
+        "저번호수": int(low),
+        "고번호수": int(6 - low),
+        "저중고분포": thirds,
+        "구간분포": sections,
+        "연속쌍": int(adjacent_pairs),
+        "끝수최대중복": int(max_same_ending),
+        "공간분산점수": float(spatial),
+    }
+
+
+def _weighted_quantile(
+    values: np.ndarray,
+    weights: np.ndarray,
+    quantile: float,
+) -> float:
+    values = np.asarray(values, dtype=float)
+    weights = np.asarray(weights, dtype=float)
+    if len(values) == 0:
+        return 0.0
+
+    order = np.argsort(values)
+    values = values[order]
+    weights = weights[order]
+
+    total = float(weights.sum())
+    if total <= 0:
+        return float(np.quantile(values, quantile))
+
+    cumulative = np.cumsum(weights) / total
+    index = int(np.searchsorted(cumulative, quantile, side="left"))
+    index = min(max(index, 0), len(values) - 1)
+    return float(values[index])
+
+
+def analyze_sum_sequence_successors(
+    df: pd.DataFrame,
+    number_columns: List[str],
+    round_column: Optional[str] = None,
+    pattern_length: int = 4,
+    top_k: int = 30,
+) -> Tuple[np.ndarray, pd.DataFrame, dict]:
+    """
+    최신 합계 수열과 과거 합계 수열을 비교하고,
+    유사한 과거 수열 직후(t+1)에 출현한 번호를 가중 집계합니다.
+
+    V27 개선:
+    - 회차가 실제로 연속된 구간만 사용
+    - 비정상 행 제거로 생긴 회차 공백을 임의로 이어붙이지 않음
+    - 합계는 하드 컷이 아니라 후속사례 적합도 점수로 사용
+    """
+    draws = df[number_columns].astype(int).to_numpy()
+    sums = draws.sum(axis=1).astype(float)
+    n = len(sums)
+
+    if n < max(30, pattern_length + 3):
+        return (
+            np.zeros(45, dtype=float),
+            pd.DataFrame(),
+            {
+                "현재합계": float(sums[-1]) if n else 0.0,
+                "신뢰도": 0.0,
+                "후속합계": [],
+                "후속가중치": [],
+            },
+        )
+
+    k = max(3, int(pattern_length))
+    current = sums[-k:]
+    current_delta = np.diff(current)
+
+    round_values = None
+    if round_column is not None and round_column in df.columns:
+        round_values = pd.to_numeric(
+            df[round_column],
+            errors="coerce",
+        ).to_numpy(dtype=float)
+
+        current_rounds = round_values[-k:]
+        if (
+            np.all(np.isfinite(current_rounds))
+            and not np.all(np.diff(current_rounds) == 1)
+        ):
+            # 최신 수열 자체에 회차 공백이 있으면 수열모델 신뢰도를 낮춤
+            current_has_gap = True
+        else:
+            current_has_gap = False
+    else:
+        current_has_gap = False
+
+    sum_scale = max(float(np.std(sums)), 15.0)
+    delta_scale = max(float(np.std(np.diff(sums))), 12.0)
+
+    candidates = []
+
+    for t in range(k - 1, n - 1):
+        # 과거 패턴구간과 후속회차가 실제 연속회차인지 확인
+        if round_values is not None:
+            hist_rounds = round_values[t - k + 1:t + 2]
+            if (
+                len(hist_rounds) != k + 1
+                or not np.all(np.isfinite(hist_rounds))
+                or not np.all(np.diff(hist_rounds) == 1)
+            ):
+                continue
+
+        hist = sums[t - k + 1:t + 1]
+        hist_delta = np.diff(hist)
+
+        level_distance = float(
+            np.mean(np.abs(hist - current)) / sum_scale
+        )
+        delta_distance = float(
+            np.mean(np.abs(hist_delta - current_delta)) / delta_scale
+        )
+
+        direction_match = float(
+            np.mean(
+                np.sign(hist_delta) == np.sign(current_delta)
+            )
+        )
+
+        similarity = (
+            np.exp(
+                -(
+                    level_distance * 0.55
+                    + delta_distance * 0.45
+                )
+            )
+            * (0.80 + 0.20 * direction_match)
+        )
+
+        if current_has_gap:
+            similarity *= 0.70
+
+        successor_numbers = sorted(
+            int(x) for x in draws[t + 1]
+        )
+        successor_sum = float(sums[t + 1])
+
+        anchor_round = (
+            int(round_values[t])
+            if round_values is not None
+            and np.isfinite(round_values[t])
+            else int(t + 1)
+        )
+        successor_round = (
+            int(round_values[t + 1])
+            if round_values is not None
+            and np.isfinite(round_values[t + 1])
+            else int(t + 2)
+        )
+
+        candidates.append(
+            {
+                "기준회차": anchor_round,
+                "기준합계": int(sums[t]),
+                "유사도": float(similarity),
+                "후속회차": successor_round,
+                "후속합계": int(successor_sum),
+                "후속번호": successor_numbers,
+            }
+        )
+
+    if not candidates:
+        return (
+            np.zeros(45, dtype=float),
+            pd.DataFrame(),
+            {
+                "현재합계": int(sums[-1]),
+                "최근합계수열": [int(x) for x in current.tolist()],
+                "신뢰도": 0.0,
+                "후속합계": [],
+                "후속가중치": [],
+            },
+        )
+
+    candidates.sort(
+        key=lambda item: item["유사도"],
+        reverse=True,
+    )
+    selected = candidates[:max(5, int(top_k))]
+
+    raw_weights = np.asarray(
+        [item["유사도"] for item in selected],
+        dtype=float,
+    )
+    weights = np.power(
+        np.clip(raw_weights, 0.0, 1.0),
+        2.0,
+    )
+    if weights.sum() <= 0:
+        weights = np.ones(len(selected), dtype=float)
+
+    number_raw = np.zeros(45, dtype=float)
+    for item, weight in zip(selected, weights):
+        for number in item["후속번호"]:
+            number_raw[int(number) - 1] += float(weight)
+
+    if number_raw.max() > number_raw.min():
+        number_score = (
+            (number_raw - number_raw.min())
+            / (number_raw.max() - number_raw.min())
+            * 100.0
+        )
+    else:
+        number_score = np.zeros(45, dtype=float)
+
+    successor_sums = np.asarray(
+        [item["후속합계"] for item in selected],
+        dtype=float,
+    )
+
+    weighted_mean = float(
+        np.average(successor_sums, weights=weights)
+    )
+    q25 = _weighted_quantile(successor_sums, weights, 0.25)
+    q50 = _weighted_quantile(successor_sums, weights, 0.50)
+    q75 = _weighted_quantile(successor_sums, weights, 0.75)
+
+    confidence = float(
+        np.clip(
+            np.mean(raw_weights[:min(10, len(raw_weights))]),
+            0.0,
+            1.0,
+        )
+    )
+
+    analog_df = pd.DataFrame(selected)
+    if not analog_df.empty:
+        analog_df["유사도"] = (
+            analog_df["유사도"] * 100.0
+        ).round(2)
+
+    context = {
+        "현재합계": int(sums[-1]),
+        "최근합계수열": [int(x) for x in current.tolist()],
+        "후속합계가중평균": round(weighted_mean, 2),
+        "후속합계Q25": int(round(q25)),
+        "후속합계중앙": int(round(q50)),
+        "후속합계Q75": int(round(q75)),
+        "신뢰도": confidence,
+        "후속합계": successor_sums.tolist(),
+        "후속가중치": weights.tolist(),
+        "수열표본수": len(selected),
+    }
+
+    return number_score, analog_df, context
+
+
+def analyze_anchor_sum_successors(
+    df: pd.DataFrame,
+    number_columns: List[str],
+    round_column: Optional[str] = None,
+    exact_min_samples: int = 8,
+) -> Tuple[np.ndarray, pd.DataFrame, dict]:
+    """
+    최신 회차 합계와 동일/근접했던 과거 회차의 '바로 다음 회차'를 분석합니다.
+
+    우선순위:
+    1) 정확히 같은 합계
+    2) 정확일치 표본이 부족할 때만 ±2
+    3) 그래도 부족하면 ±5
+
+    핵심:
+    - 회차 t와 t+1이 실제 연속회차일 때만 사용
+    - 반복 후속합계(mode), 중심값, 상·하단 꼬리를 자동 산출
+    - 후속번호 출현을 번호 가중점수로 사용
+    """
+    draws = df[number_columns].astype(int).to_numpy()
+    sums = draws.sum(axis=1).astype(int)
+
+    if len(sums) < 20:
+        return (
+            np.zeros(45, dtype=float),
+            pd.DataFrame(),
+            {},
+        )
+
+    current_sum = int(sums[-1])
+
+    round_values = None
+    if round_column is not None and round_column in df.columns:
+        round_values = pd.to_numeric(
+            df[round_column],
+            errors="coerce",
+        ).to_numpy(dtype=float)
+
+    def collect(max_delta: int):
+        rows = []
+        for t in range(0, len(sums) - 1):
+            delta = abs(int(sums[t]) - current_sum)
+            if delta > int(max_delta):
+                continue
+
+            if round_values is not None:
+                if (
+                    not np.isfinite(round_values[t])
+                    or not np.isfinite(round_values[t + 1])
+                    or int(round_values[t + 1])
+                    != int(round_values[t]) + 1
+                ):
+                    continue
+
+            # 정확일치 우선, 근접합계일수록 지수적으로 감쇠
+            if delta == 0:
+                weight = 1.0
+            elif delta <= 2:
+                weight = 0.65 * np.exp(-delta / 2.0)
+            else:
+                weight = 0.35 * np.exp(-delta / 3.0)
+
+            rows.append(
+                {
+                    "기준회차": (
+                        int(round_values[t])
+                        if round_values is not None
+                        else int(t + 1)
+                    ),
+                    "기준합계": int(sums[t]),
+                    "합계차이": int(delta),
+                    "사례가중치": float(weight),
+                    "후속회차": (
+                        int(round_values[t + 1])
+                        if round_values is not None
+                        else int(t + 2)
+                    ),
+                    "후속합계": int(sums[t + 1]),
+                    "후속번호": sorted(
+                        int(x) for x in draws[t + 1]
+                    ),
+                }
+            )
+        return rows
+
+    exact_rows = collect(0)
+    rows = list(exact_rows)
+    expansion = "정확일치"
+
+    if len(rows) < int(exact_min_samples):
+        rows = collect(2)
+        expansion = "±2 확장"
+
+    if len(rows) < int(exact_min_samples):
+        rows = collect(5)
+        expansion = "±5 확장"
+
+    if not rows:
+        return (
+            np.zeros(45, dtype=float),
+            pd.DataFrame(),
+            {
+                "현재합계": current_sum,
+                "정확일치표본수": 0,
+                "사용표본수": 0,
+                "확장단계": "없음",
+            },
+        )
+
+    weights = np.asarray(
+        [row["사례가중치"] for row in rows],
+        dtype=float,
+    )
+    successor_sums = np.asarray(
+        [row["후속합계"] for row in rows],
+        dtype=float,
+    )
+
+    number_raw = np.zeros(45, dtype=float)
+    for row, weight in zip(rows, weights):
+        for number in row["후속번호"]:
+            number_raw[number - 1] += float(weight)
+
+    if number_raw.max() > number_raw.min():
+        number_score = (
+            (number_raw - number_raw.min())
+            / (number_raw.max() - number_raw.min())
+            * 100.0
+        )
+    else:
+        number_score = np.zeros(45, dtype=float)
+
+    weighted_mean = float(
+        np.average(successor_sums, weights=weights)
+    )
+    weighted_median = _weighted_quantile(
+        successor_sums, weights, 0.50
+    )
+    q25 = _weighted_quantile(
+        successor_sums, weights, 0.25
+    )
+    q75 = _weighted_quantile(
+        successor_sums, weights, 0.75
+    )
+
+    # 반복 후속합계(mode) - 실제 정확 값의 반복성을 사용
+    exact_successor_sums = [
+        int(row["후속합계"])
+        for row in exact_rows
+    ]
+    mode_sum = None
+    mode_count = 0
+    if exact_successor_sums:
+        counts = pd.Series(
+            exact_successor_sums,
+            dtype=int,
+        ).value_counts()
+        mode_sum = int(counts.index[0])
+        mode_count = int(counts.iloc[0])
+        if mode_count < 2:
+            mode_sum = None
+            mode_count = 0
+
+    upper_mask = successor_sums > float(current_sum)
+    lower_mask = successor_sums < float(q25)
+
+    upper_count = int(np.sum(upper_mask))
+    lower_count = int(np.sum(lower_mask))
+
+    upper_weight_share = float(
+        weights[upper_mask].sum() / weights.sum()
+    ) if weights.sum() > 0 else 0.0
+    lower_weight_share = float(
+        weights[lower_mask].sum() / weights.sum()
+    ) if weights.sum() > 0 else 0.0
+
+    upper_target = (
+        _weighted_quantile(
+            successor_sums[upper_mask],
+            weights[upper_mask],
+            0.50,
+        )
+        if upper_count > 0
+        else float(q75)
+    )
+    lower_target = (
+        _weighted_quantile(
+            successor_sums[lower_mask],
+            weights[lower_mask],
+            0.50,
+        )
+        if lower_count > 0
+        else float(q25)
+    )
+
+    context = {
+        "현재합계": current_sum,
+        "정확일치표본수": len(exact_rows),
+        "사용표본수": len(rows),
+        "확장단계": expansion,
+        "후속합계": successor_sums.tolist(),
+        "후속가중치": weights.tolist(),
+        "후속합계가중평균": round(weighted_mean, 2),
+        "후속합계중앙": int(round(weighted_median)),
+        "후속합계Q25": int(round(q25)),
+        "후속합계Q75": int(round(q75)),
+        "반복모드합계": mode_sum,
+        "반복모드횟수": mode_count,
+        "상단표본수": upper_count,
+        "하단표본수": lower_count,
+        "상단가중비중": round(upper_weight_share, 4),
+        "하단가중비중": round(lower_weight_share, 4),
+        "상단대표합계": int(round(upper_target)),
+        "하단대표합계": int(round(lower_target)),
+    }
+
+    detail_df = pd.DataFrame(rows)
+    return number_score, detail_df, context
+
+
+def build_adaptive_sum_roles(
+    anchor_context: dict,
+    sequence_context: dict,
+    game_count: int = 5,
+) -> List[dict]:
+    """
+    5게임 역할을 데이터에서 자동 결정합니다.
+
+    기본 철학:
+    - 반복되는 후속합계가 있으면 1게임은 MODE
+    - 중심값 주변은 2게임을 기본 축으로 사용
+    - 남은 게임은 상단/하단 꼬리의 실제 증거비중에 따라 배분
+    - 합계를 정확히 맞추는 하드룰이 아니라 역할별 soft target
+    """
+    game_count = max(1, int(game_count))
+    current_sum = int(anchor_context.get("현재합계", 0))
+    center_target = float(
+        anchor_context.get(
+            "후속합계중앙",
+            sequence_context.get("후속합계중앙", current_sum),
+        )
+    )
+    mode_target = anchor_context.get("반복모드합계")
+    mode_count = int(anchor_context.get("반복모드횟수", 0))
+
+    upper_target = float(
+        anchor_context.get(
+            "상단대표합계",
+            sequence_context.get("후속합계Q75", center_target),
+        )
+    )
+    lower_target = float(
+        anchor_context.get(
+            "하단대표합계",
+            sequence_context.get("후속합계Q25", center_target),
+        )
+    )
+
+    roles = []
+
+    if mode_target is not None and mode_count >= 2 and len(roles) < game_count:
+        roles.append(
+            {
+                "역할": "반복모드",
+                "목표합계": float(mode_target),
+                "방향": "mode",
+            }
+        )
+
+    # 중심축은 최대 2게임
+    while len(roles) < min(game_count, 3):
+        roles.append(
+            {
+                "역할": "중심",
+                "목표합계": center_target,
+                "방향": "center",
+            }
+        )
+
+    remaining = game_count - len(roles)
+
+    # tail evidence는 동일합계 후속사례 70% + 수열 유사사례 30%
+    anchor_upper = float(anchor_context.get("상단가중비중", 0.0))
+    anchor_lower = float(anchor_context.get("하단가중비중", 0.0))
+
+    seq_sums = np.asarray(
+        sequence_context.get("후속합계", []),
+        dtype=float,
+    )
+    seq_weights = np.asarray(
+        sequence_context.get("후속가중치", []),
+        dtype=float,
+    )
+    if (
+        len(seq_sums)
+        and len(seq_weights) == len(seq_sums)
+        and seq_weights.sum() > 0
+    ):
+        seq_upper = float(
+            seq_weights[seq_sums > current_sum].sum()
+            / seq_weights.sum()
+        )
+        seq_lower = float(
+            seq_weights[seq_sums < center_target].sum()
+            / seq_weights.sum()
+        )
+    else:
+        seq_upper = 0.0
+        seq_lower = 0.0
+
+    upper_evidence = 0.70 * anchor_upper + 0.30 * seq_upper
+    lower_evidence = 0.70 * anchor_lower + 0.30 * seq_lower
+
+    for slot in range(remaining):
+        # 첫 tail은 강한 쪽, 두 번째 tail은 차이가 작으면 반대쪽도 분산
+        if slot == 0:
+            choose_upper = upper_evidence >= lower_evidence
+        else:
+            if abs(upper_evidence - lower_evidence) <= 0.08:
+                choose_upper = roles[-1]["방향"] != "upper"
+            else:
+                choose_upper = upper_evidence >= lower_evidence
+
+        if choose_upper:
+            roles.append(
+                {
+                    "역할": "상단",
+                    "목표합계": upper_target,
+                    "방향": "upper",
+                }
+            )
+        else:
+            roles.append(
+                {
+                    "역할": "하단",
+                    "목표합계": lower_target,
+                    "방향": "lower",
+                }
+            )
+
+    return roles[:game_count]
+
+
+
+def calculate_v27_core_pattern_score(
+    eleven_score_df: pd.DataFrame,
+    v26_score_df: pd.DataFrame,
+    weights: dict,
+) -> pd.DataFrame:
+    """
+    V27.1 핵심패턴 보강점수.
+
+    기존 15대 분석 안에 이미 존재하는 중요 신호를
+    합계 후속패턴 엔진과 결합한 뒤에도 묻히지 않도록
+    '보강 레이어'로 다시 한 번 투명하게 반영합니다.
+
+    사용 신호:
+    - 홀짝·합계·번호대 구조전이
+    - 구매용지 마킹 위치
+    - 장기 미출현
+    - 직전번호 인접수
+    - 전 회차 반복출현(이월수)
+    - 최근 상승추세
+    - 끝수 패턴
+
+    주의:
+    이 점수는 독립적인 당첨확률이 아니라
+    기존 V26/V27 점수의 안정화·보강용 점수입니다.
+    """
+
+    def norm100(values) -> np.ndarray:
+        arr = np.asarray(values, dtype=float)
+        arr = np.where(np.isfinite(arr), arr, 0.0)
+        if arr.size == 0:
+            return arr
+        lo = float(np.min(arr))
+        hi = float(np.max(arr))
+        if hi <= lo:
+            return np.zeros_like(arr, dtype=float)
+        return (arr - lo) / (hi - lo) * 100.0
+
+    base_table = (
+        pd.DataFrame({"번호": np.arange(1, 46)})
+        .merge(
+            eleven_score_df[
+                [
+                    "번호",
+                    "장기미출",
+                    "상승추세",
+                    "이월수",
+                    "인접수",
+                    "끝수패턴",
+                ]
+            ],
+            on="번호",
+            how="left",
+        )
+        .merge(
+            v26_score_df[
+                [
+                    "번호",
+                    "마킹패턴점수",
+                    "구조전이점수",
+                ]
+            ],
+            on="번호",
+            how="left",
+        )
+        .fillna(0.0)
+    )
+
+    component_map = {
+        "장기미출": "미출현",
+        "상승추세": "최근추세",
+        "이월수": "전회차반복",
+        "인접수": "인접출현",
+        "끝수패턴": "끝수",
+        "마킹패턴점수": "구매용지",
+        "구조전이점수": "홀짝구조전이",
+    }
+
+    for source, target in component_map.items():
+        base_table[target] = norm100(
+            pd.to_numeric(
+                base_table[source],
+                errors="coerce",
+            ).fillna(0.0).to_numpy()
+        )
+
+    default_weights = {
+        "미출현": 20.0,
+        "최근추세": 15.0,
+        "전회차반복": 10.0,
+        "인접출현": 15.0,
+        "끝수": 10.0,
+        "구매용지": 18.0,
+        "홀짝구조전이": 18.0,
+    }
+
+    resolved = {}
+    for key, default_value in default_weights.items():
+        try:
+            resolved[key] = max(
+                0.0,
+                float(weights.get(key, default_value)),
+            )
+        except Exception:
+            resolved[key] = float(default_value)
+
+    total_weight = sum(resolved.values())
+    if total_weight <= 0:
+        resolved = default_weights.copy()
+        total_weight = sum(resolved.values())
+
+    core = np.zeros(45, dtype=float)
+
+    for key, weight in resolved.items():
+        core += (
+            base_table[key].to_numpy(dtype=float)
+            * (float(weight) / total_weight)
+        )
+
+    base_table["핵심패턴보강점수"] = np.round(
+        norm100(core),
+        2,
+    )
+
+    return base_table[
+        [
+            "번호",
+            "미출현",
+            "최근추세",
+            "전회차반복",
+            "인접출현",
+            "끝수",
+            "구매용지",
+            "홀짝구조전이",
+            "핵심패턴보강점수",
+        ]
+    ]
+
+
+def combine_successor_evidence(
+    v26_score_df: pd.DataFrame,
+    sequence_scores: np.ndarray,
+    anchor_scores: np.ndarray,
+    sequence_context: dict,
+    anchor_context: dict,
+    core_pattern_df: Optional[pd.DataFrame] = None,
+    successor_max_weight: float = 0.22,
+    core_reinforcement_weight: float = 0.12,
+) -> pd.DataFrame:
+    """
+    기존 15대 V26 점수와
+    - 최신 합계수열 유사사례 후속번호
+    - 동일/근접 합계 후속번호
+    를 통합합니다.
+    """
+    result = v26_score_df.copy()
+
+    seq = np.asarray(sequence_scores, dtype=float)
+    anchor = np.asarray(anchor_scores, dtype=float)
+
+    if seq.size != 45:
+        seq = np.zeros(45, dtype=float)
+    if anchor.size != 45:
+        anchor = np.zeros(45, dtype=float)
+
+    exact_n = int(anchor_context.get("정확일치표본수", 0))
+    seq_conf = float(sequence_context.get("신뢰도", 0.0))
+
+    # 정확일치 표본이 충분하면 anchor를 더 신뢰
+    anchor_mix = float(
+        np.clip(0.45 + min(exact_n, 20) / 100.0, 0.45, 0.65)
+    )
+    evidence = (
+        anchor * anchor_mix
+        + seq * (1.0 - anchor_mix)
+    )
+
+    evidence_strength = float(
+        np.clip(
+            0.45
+            + 0.35 * min(exact_n / 12.0, 1.0)
+            + 0.20 * seq_conf,
+            0.35,
+            1.0,
+        )
+    )
+    successor_weight = float(
+        successor_max_weight * evidence_strength
+    )
+
+    ordered = (
+        result.sort_values("번호")
+        .reset_index(drop=True)
+    )
+    original = ordered["V26종합점수"].astype(float).to_numpy()
+
+    core_score = np.zeros(45, dtype=float)
+
+    if (
+        core_pattern_df is not None
+        and not core_pattern_df.empty
+        and "핵심패턴보강점수" in core_pattern_df.columns
+    ):
+        core_ordered = (
+            core_pattern_df[
+                ["번호", "핵심패턴보강점수"]
+            ]
+            .copy()
+            .sort_values("번호")
+            .reset_index(drop=True)
+        )
+
+        if len(core_ordered) == 45:
+            core_score = (
+                core_ordered["핵심패턴보강점수"]
+                .astype(float)
+                .to_numpy()
+            )
+
+    core_weight = float(
+        np.clip(
+            core_reinforcement_weight,
+            0.0,
+            0.25,
+        )
+    )
+
+    base_weight = max(
+        0.50,
+        1.0 - successor_weight - core_weight,
+    )
+
+    weight_sum = base_weight + successor_weight + core_weight
+
+    combined = (
+        original * (base_weight / weight_sum)
+        + evidence * (successor_weight / weight_sum)
+        + core_score * (core_weight / weight_sum)
+    )
+
+    if combined.max() > combined.min():
+        combined = (
+            (combined - combined.min())
+            / (combined.max() - combined.min())
+            * 100.0
+        )
+
+    ordered["원본V26점수"] = original
+    ordered["합계동일후속점수"] = anchor
+    ordered["합계수열후속점수"] = seq
+    ordered["핵심패턴보강점수"] = np.round(core_score, 2)
+    ordered["V26종합점수"] = np.round(combined, 2)
+    ordered["순위"] = (
+        ordered["V26종합점수"]
+        .rank(method="first", ascending=False)
+        .astype(int)
+    )
+
+    return ordered.sort_values(
+        "V26종합점수",
+        ascending=False,
+    ).reset_index(drop=True)
+
+
+
+
+def _sum_sequence_fit(
+    total: int,
+    sequence_context: dict,
+) -> float:
+    """
+    유사 수열의 실제 후속합계 분포와 조합 합계의 적합도를 0~100으로 계산합니다.
+    하드 컷이 아니라 soft score입니다.
+    """
+    successor_sums = np.asarray(
+        sequence_context.get("후속합계", []),
+        dtype=float,
+    )
+    weights = np.asarray(
+        sequence_context.get("후속가중치", []),
+        dtype=float,
+    )
+
+    if len(successor_sums) == 0:
+        return 50.0
+
+    if len(weights) != len(successor_sums) or weights.sum() <= 0:
+        weights = np.ones_like(successor_sums)
+
+    # 약 16점 차이마다 적합도가 점진적으로 낮아지게 설정
+    kernel = np.exp(
+        -np.abs(successor_sums - float(total)) / 16.0
+    )
+    score = float(
+        np.average(kernel, weights=weights) * 100.0
+    )
+    return round(score, 2)
+
+
+def _role_sum_fit(
+    total: int,
+    role: dict,
+    anchor_context: dict,
+) -> float:
+    """역할별 합계 적합도를 0~100 soft score로 계산합니다."""
+    target = float(role.get("목표합계", total))
+    direction = str(role.get("방향", "center"))
+    current_sum = float(anchor_context.get("현재합계", target))
+
+    successor_sums = np.asarray(
+        anchor_context.get("후속합계", []),
+        dtype=float,
+    )
+
+    if len(successor_sums) >= 3:
+        dispersion = max(
+            float(np.std(successor_sums)),
+            8.0,
+        )
+    else:
+        dispersion = 14.0
+
+    # 역할별로 너무 넓지 않되 하드 컷은 사용하지 않음
+    scale = float(np.clip(dispersion * 0.45, 7.0, 18.0))
+    fit = float(
+        np.exp(-abs(float(total) - target) / scale) * 100.0
+    )
+
+    # 방향성은 soft penalty로만 적용
+    if direction == "upper" and float(total) <= current_sum:
+        fit *= 0.35
+    elif direction == "lower" and float(total) >= target + scale:
+        fit *= 0.45
+
+    return round(fit, 2)
+
+
+def generate_v27_adaptive_sets(
+    v26_score_df: pd.DataFrame,
+    anchor_context: dict,
+    sequence_context: dict,
+    game_count: int,
+    candidate_count: int,
+    fixed_numbers: List[int],
+    excluded_numbers: List[int],
+    minimum_spatial_score: float,
+):
+    """
+    V27.1 FINAL Adaptive Successor + Core Pattern Portfolio
+
+    1) 최종 생존번호 TOP15를 기본 후보로 사용
+    2) TOP15에서 가능한 6개 조합을 전수검사
+    3) 구조필터(홀짝/저고/저중고/구간/연속/끝수/공간분산) 적용
+    4) 동일·근접합계 후속사례와 합계수열 후속사례를 soft score로 반영
+    5) 5게임 역할은 매회 데이터에서 자동 결정
+       - 반복모드 1
+       - 중심 2
+       - 나머지 2는 상/하단 증거에 따라 자동
+    6) 게임 간 번호 중복을 억제
+    """
+    fixed = sorted(set(int(n) for n in fixed_numbers))
+    excluded = set(int(n) for n in excluded_numbers)
+
+    if len(fixed) > 5:
+        raise ValueError(
+            "고정수는 최대 5개까지만 사용할 수 있습니다."
+        )
+
+    if set(fixed) & excluded:
+        raise ValueError(
+            "고정수와 제외수에 같은 번호가 있습니다."
+        )
+
+    ranked = (
+        v26_score_df
+        .sort_values("V26종합점수", ascending=False)
+        ["번호"]
+        .astype(int)
+        .tolist()
+    )
+
+    score_map = (
+        v26_score_df
+        .set_index("번호")["V26종합점수"]
+        .astype(float)
+        .to_dict()
+    )
+
+    roles = build_adaptive_sum_roles(
+        anchor_context=anchor_context,
+        sequence_context=sequence_context,
+        game_count=game_count,
+    )
+
+    survivor_steps = []
+    base_count = max(15, min(int(candidate_count), 20))
+    for value in [15, base_count, 18, 20, 25, 30]:
+        value = min(45, int(value))
+        if value not in survivor_steps:
+            survivor_steps.append(value)
+
+    all_candidates = []
+    used_survivor_count = survivor_steps[-1]
+
+    for survivor_count in survivor_steps:
+        survivor_numbers = [
+            n for n in ranked[:survivor_count]
+            if n not in excluded
+        ]
+
+        for n in fixed:
+            if n not in survivor_numbers:
+                survivor_numbers.append(n)
+
+        survivor_numbers = sorted(set(survivor_numbers))
+
+        available = [
+            n for n in survivor_numbers
+            if n not in fixed
+        ]
+        need = 6 - len(fixed)
+
+        if need < 0 or len(available) < need:
+            continue
+
+        candidate_records = []
+
+        for sampled in itertools.combinations(
+            available,
+            need,
+        ):
+            combo = sorted(fixed + list(sampled))
+
+            if len(combo) != 6 or len(set(combo)) != 6:
+                continue
+
+            f = _sequence_features(combo)
+
+            # 구조 규칙
+            if not (2 <= f["홀수수"] <= 4):
+                continue
+            if not (2 <= f["저번호수"] <= 4):
+                continue
+            if sum(1 for v in f["저중고분포"] if v > 0) < 2:
+                continue
+            if sum(1 for v in f["구간분포"] if v > 0) < 3:
+                continue
+            if max(f["구간분포"]) > 3:
+                continue
+            if f["연속쌍"] > 2:
+                continue
+            if f["끝수최대중복"] > 2:
+                continue
+            if f["공간분산점수"] < float(minimum_spatial_score):
+                continue
+
+            mean_score = float(
+                np.mean(
+                    [score_map.get(n, 0.0) for n in combo]
+                )
+            )
+
+            empirical_fit = _sum_sequence_fit(
+                f["합계"],
+                {
+                    "후속합계": anchor_context.get("후속합계", []),
+                    "후속가중치": anchor_context.get("후속가중치", []),
+                },
+            )
+
+            structure_score = 100.0
+            structure_score -= abs(f["홀수수"] - 3) * 6.0
+            structure_score -= abs(f["저번호수"] - 3) * 6.0
+            structure_score -= f["연속쌍"] * 4.0
+            structure_score -= max(
+                0,
+                max(f["구간분포"]) - 2,
+            ) * 3.0
+
+            base_quality = (
+                mean_score * 0.56
+                + empirical_fit * 0.18
+                + structure_score * 0.16
+                + f["공간분산점수"] * 0.10
+            )
+
+            candidate_records.append(
+                {
+                    "combo": combo,
+                    "base_quality": float(base_quality),
+                    "mean_score": mean_score,
+                    "empirical_fit": empirical_fit,
+                    "structure": structure_score,
+                    "features": f,
+                    "survivor_count": int(survivor_count),
+                }
+            )
+
+        if len(candidate_records) >= int(game_count) * 5:
+            all_candidates = candidate_records
+            used_survivor_count = int(survivor_count)
+            break
+
+    if not all_candidates:
+        return [], [], {
+            "사용생존번호수": int(used_survivor_count),
+            "완성게임수": 0,
+            "역할": roles,
+        }
+
+    selected = []
+    details = []
+    number_usage = {n: 0 for n in range(1, 46)}
+
+    # 역할별로 가장 적합한 조합을 순차 선택
+    for role in roles:
+        scored = []
+
+        for record in all_candidates:
+            combo = record["combo"]
+
+            if any(tuple(combo) == tuple(prev) for prev in selected):
+                continue
+
+            overlap_max = (
+                max(
+                    [
+                        len(set(combo) & set(prev))
+                        for prev in selected
+                    ],
+                    default=0,
+                )
+            )
+
+            usage_penalty = sum(
+                number_usage[n]
+                for n in combo
+            ) * 1.6
+
+            overlap_penalty = max(
+                0,
+                overlap_max - max(2, len(fixed)),
+            ) * 10.0
+
+            role_fit = _role_sum_fit(
+                total=record["features"]["합계"],
+                role=role,
+                anchor_context=anchor_context,
+            )
+
+            final = (
+                record["base_quality"] * 0.72
+                + role_fit * 0.28
+                - usage_penalty
+                - overlap_penalty
+            )
+
+            scored.append(
+                (
+                    final,
+                    role_fit,
+                    record,
+                )
+            )
+
+        if not scored:
+            continue
+
+        scored.sort(
+            key=lambda x: x[0],
+            reverse=True,
+        )
+
+        _, role_fit, best = scored[0]
+        combo = best["combo"]
+
+        selected.append(combo)
+        for n in combo:
+            number_usage[n] += 1
+
+        details.append(
+            {
+                "역할": role["역할"],
+                "역할목표합계": round(float(role["목표합계"]), 1),
+                "역할적합도": round(float(role_fit), 2),
+                "최종품질점수": round(float(best["base_quality"]), 2),
+                "번호평균점수": round(float(best["mean_score"]), 2),
+                "합계후속적합도": round(float(best["empirical_fit"]), 2),
+                "균형점수": round(float(best["structure"]), 2),
+                "생존번호수": int(best["survivor_count"]),
+            }
+        )
+
+        if len(selected) >= int(game_count):
+            break
+
+    # 역할별 선택으로 부족하면 일반 품질순으로 보충
+    if len(selected) < int(game_count):
+        selected_keys = {tuple(x) for x in selected}
+        fallback = sorted(
+            all_candidates,
+            key=lambda x: x["base_quality"],
+            reverse=True,
+        )
+
+        for record in fallback:
+            combo = record["combo"]
+            if tuple(combo) in selected_keys:
+                continue
+
+            if any(
+                len(set(combo) & set(prev)) > max(3, len(fixed))
+                for prev in selected
+            ):
+                continue
+
+            selected.append(combo)
+            selected_keys.add(tuple(combo))
+            details.append(
+                {
+                    "역할": "보충",
+                    "역할목표합계": None,
+                    "역할적합도": None,
+                    "최종품질점수": round(float(record["base_quality"]), 2),
+                    "번호평균점수": round(float(record["mean_score"]), 2),
+                    "합계후속적합도": round(float(record["empirical_fit"]), 2),
+                    "균형점수": round(float(record["structure"]), 2),
+                    "생존번호수": int(record["survivor_count"]),
+                }
+            )
+
+            if len(selected) >= int(game_count):
+                break
+
+    summary = {
+        "사용생존번호수": int(used_survivor_count),
+        "완성게임수": len(selected),
+        "현재합계": anchor_context.get("현재합계"),
+        "정확일치표본수": anchor_context.get("정확일치표본수"),
+        "사용표본수": anchor_context.get("사용표본수"),
+        "확장단계": anchor_context.get("확장단계"),
+        "후속합계가중평균": anchor_context.get("후속합계가중평균"),
+        "후속합계중앙": anchor_context.get("후속합계중앙"),
+        "반복모드합계": anchor_context.get("반복모드합계"),
+        "반복모드횟수": anchor_context.get("반복모드횟수"),
+        "상단표본수": anchor_context.get("상단표본수"),
+        "상단대표합계": anchor_context.get("상단대표합계"),
+        "역할": roles,
+    }
+
+    return selected[:int(game_count)], details[:int(game_count)], summary
+
+
+# =========================================================
 # 제목
 # =========================================================
 
-st.title("🎯 LOTTO GPT V26.2 Professional")
+st.title("🎯 LOTTO GPT V27.1 FINAL Professional")
 st.markdown("""
 <div style="background:#09192f;
 padding:18px;
@@ -1004,7 +2266,7 @@ margin-bottom:18px;">
 </h2>
 
 <h3 style="color:white;">
-LOTTO GPT V26.2 PROFESSIONAL
+LOTTO GPT V27.1 FINAL PROFESSIONAL
 </h3>
 
 </td>
@@ -1014,7 +2276,7 @@ LOTTO GPT V26.2 PROFESSIONAL
 <h4 style="color:#00ff90;">
 AI Confidence
 
-97.8%
+DATA-DRIVEN
 </h4>
 
 <h4 style="color:#8fd3ff;">
@@ -1068,7 +2330,7 @@ box-shadow:0 0 20px rgba(251,191,36,.4);
 </h2>
 
 <h4 style="color:white;">
-LOTTO GPT V26.2 PROFESSIONAL
+LOTTO GPT V27.1 FINAL PROFESSIONAL
 </h4>
 
 <hr>
@@ -1095,7 +2357,7 @@ LOTTO GPT V26.2 PROFESSIONAL
 
 <p style="color:#00e5ff;">
 🏆 추천 품질
-★★★★★ 96.8%
+PORTFOLIO MODE
 </p>
 </div>
 """, unsafe_allow_html=True)
@@ -1399,37 +2661,44 @@ if uploaded_file is None:
 
 else:
          
-                excel_file = pd.ExcelFile(
-                    uploaded_file
-                )
-    
+                excel_file = pd.ExcelFile(uploaded_file)
                 sheet_names = excel_file.sheet_names
-    
-                preferred_sheet_names = [
-                    "당첨번호",
-                    "회차별",
-                    "번호별",
-                    "Sheet1",
-                ]
-    
-                default_sheet_index = 0
-    
-                for sheet in preferred_sheet_names:
-                    if sheet in sheet_names:
-                        default_sheet_index = sheet_names.index(sheet)
-                        break
-    
+
+                # 모든 시트를 실제로 검사해 가장 완전한 회차별 시트를 자동선택
+                sheet_quality_map = {}
+
+                for sheet_name in sheet_names:
+                    try:
+                        probe_df = pd.read_excel(
+                            uploaded_file,
+                            sheet_name=sheet_name,
+                        )
+                        sheet_quality_map[sheet_name] = sheet_lotto_quality(probe_df)
+                    except Exception:
+                        sheet_quality_map[sheet_name] = (-1, -1, -1)
+
+                best_sheet = max(
+                    sheet_names,
+                    key=lambda name: sheet_quality_map.get(name, (-1, -1, -1)),
+                )
+
+                default_sheet_index = sheet_names.index(best_sheet)
+
                 selected_sheet = sheet_selector_placeholder.selectbox(
                     "분석할 엑셀 시트 선택",
                     options=sheet_names,
                     index=default_sheet_index,
+                    help=(
+                        "V26.3은 회차·1P~6P 구조와 최신회차를 검사해 "
+                        "가장 완전한 시트를 자동으로 먼저 선택합니다."
+                    ),
                 )
-    
+
                 raw_df = pd.read_excel(
                     uploaded_file,
                     sheet_name=selected_sheet,
                 )
-        
+
                 (
                     df,
                     number_columns,
@@ -1437,22 +2706,46 @@ else:
                 ) = prepare_lotto_data(raw_df)
         
                 latest_round = (
-                    int(
-                        df[round_column]
-                        .dropna()
-                        .max()
-                    )
+                    int(df[round_column].max())
                     if round_column is not None
                     and df[round_column].notna().any()
                     else len(df)
                 )
-        
+
+                if round_column is not None:
+                    latest_row = (
+                        df.loc[df[round_column].idxmax()]
+                    )
+                else:
+                    latest_row = df.iloc[-1]
+
                 latest_numbers = (
-                    df.iloc[-1][number_columns]
+                    latest_row[number_columns]
                     .astype(int)
                     .sort_values()
                     .tolist()
                 )
+
+                # 데이터 무결성 점검
+                data_warning = None
+                if round_column is not None:
+                    rounds = df[round_column].astype(int).tolist()
+                    unique_rounds = len(set(rounds))
+                    if unique_rounds != len(rounds):
+                        data_warning = "회차 중복이 감지되었습니다."
+                    elif min(rounds) == 1 and latest_round != len(rounds):
+                        missing_count = latest_round - len(rounds)
+                        if missing_count > 0:
+                            data_warning = f"중간에 누락된 회차가 {missing_count}개 있습니다."
+
+                st.caption(
+                    f"✅ 자동선택 시트: {best_sheet} · "
+                    f"현재 분석 시트: {selected_sheet} · "
+                    f"유효 {len(df):,}회"
+                )
+
+                if data_warning:
+                    st.warning("⚠️ 데이터 무결성 경고: " + data_warning)
         
                 draws = extract_draws(
                     df,
@@ -1566,6 +2859,153 @@ else:
                     similarity_top_k=similarity_top_k,
                     minimum_similarity=minimum_similarity,
                 )
+
+                # ============================================================
+                # V27.1 FINAL - 최신 합계수열 유사사례 → 후속번호 가중
+                # ============================================================
+                (
+                    sum_sequence_scores,
+                    sum_sequence_analogs_df,
+                    sum_sequence_context,
+                ) = analyze_sum_sequence_successors(
+                    df=df,
+                    number_columns=number_columns,
+                    round_column=round_column,
+                    pattern_length=4,
+                    top_k=30,
+                )
+
+                (
+                    anchor_sum_scores,
+                    anchor_sum_cases_df,
+                    anchor_sum_context,
+                ) = analyze_anchor_sum_successors(
+                    df=df,
+                    number_columns=number_columns,
+                    round_column=round_column,
+                    exact_min_samples=8,
+                )
+
+                # ============================================================
+                # V27.1 FINAL - 핵심패턴 보강 레이어
+                # 기존 슬라이더의 기본 가중치를 그대로 사용합니다.
+                # ============================================================
+                core_pattern_weights = {
+                    "미출현": weight_overdue,
+                    "최근추세": weight_trend,
+                    "전회차반복": weight_carry,
+                    "인접출현": weight_adjacent,
+                    "끝수": weight_ending,
+                    "구매용지": weight_marking,
+                    "홀짝구조전이": weight_transition,
+                }
+
+                core_pattern_df = calculate_v27_core_pattern_score(
+                    eleven_score_df=eleven_score_df,
+                    v26_score_df=v26_score_df,
+                    weights=core_pattern_weights,
+                )
+
+                v26_score_df = combine_successor_evidence(
+                    v26_score_df=v26_score_df,
+                    sequence_scores=sum_sequence_scores,
+                    anchor_scores=anchor_sum_scores,
+                    sequence_context=sum_sequence_context,
+                    anchor_context=anchor_sum_context,
+                    core_pattern_df=core_pattern_df,
+                    successor_max_weight=0.22,
+                    core_reinforcement_weight=0.12,
+                )
+
+                with st.expander(
+                    "⚙️ V27.1 핵심패턴 기본가중치·보강점수",
+                    expanded=False,
+                ):
+                    st.caption(
+                        "기존 15대 분석에 포함된 핵심 신호가 "
+                        "합계 후속패턴 결합 후에도 희석되지 않도록 "
+                        "12% 보강 레이어로 재반영합니다."
+                    )
+                    st.write(
+                        {
+                            "장기 미출현": weight_overdue,
+                            "최근 상승추세": weight_trend,
+                            "전 회차 반복출현": weight_carry,
+                            "인접 출현": weight_adjacent,
+                            "끝수 패턴": weight_ending,
+                            "구매용지 위치": weight_marking,
+                            "홀짝·합계·번호대 전이": weight_transition,
+                        }
+                    )
+                    st.dataframe(
+                        core_pattern_df
+                        .sort_values(
+                            "핵심패턴보강점수",
+                            ascending=False,
+                        )
+                        .head(15),
+                        use_container_width=True,
+                        hide_index=True,
+                    )
+
+                with st.expander(
+                    "🧬 합계수열 유사사례·후속번호 분석",
+                    expanded=False,
+                ):
+                    st.write(
+                        "최근 합계수열:",
+                        sum_sequence_context.get("최근합계수열", []),
+                    )
+                    st.write(
+                        "현재 회차 합계:",
+                        sum_sequence_context.get("현재합계", "-"),
+                    )
+                    st.write(
+                        "동일합계 후속표본:",
+                        anchor_sum_context.get("정확일치표본수", 0),
+                        "회",
+                    )
+                    st.write(
+                        "후속합계 중심(중앙값):",
+                        anchor_sum_context.get("후속합계중앙", "-"),
+                    )
+                    st.write(
+                        "반복 후속합계(mode):",
+                        anchor_sum_context.get("반복모드합계", "-"),
+                        " / 출현 ",
+                        anchor_sum_context.get("반복모드횟수", 0),
+                        "회",
+                    )
+                    st.write(
+                        "현재합계 초과 후속사례:",
+                        anchor_sum_context.get("상단표본수", 0),
+                        "회 / 대표합계 ",
+                        anchor_sum_context.get("상단대표합계", "-"),
+                    )
+                    st.write(
+                        "유사사례 후속합계 가중평균:",
+                        sum_sequence_context.get("후속합계가중평균", "-"),
+                    )
+                    st.write(
+                        "후속합계 가중 중앙값:",
+                        sum_sequence_context.get("후속합계중앙", "-"),
+                    )
+                    st.caption(
+                        "※ 후속합계는 강제 범위가 아니라 조합 품질의 soft score로만 사용합니다."
+                    )
+                    if not sum_sequence_analogs_df.empty:
+                        st.dataframe(
+                            sum_sequence_analogs_df.head(20),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
+                    if not anchor_sum_cases_df.empty:
+                        st.markdown("**동일·근접 합계 후속사례**")
+                        st.dataframe(
+                            anchor_sum_cases_df.head(30),
+                            use_container_width=True,
+                            hide_index=True,
+                        )
 
                                  # ============================================================
                 # V26 FINAL DEBUG - 15대 분석 실제 기여도 점검
@@ -1694,175 +3134,75 @@ else:
                 st.divider()
 
                 generate_button = st.button(
-                    "🚀 V26 균형 추천 조합 생성",
+                    "🚀 V27 FINAL 후속패턴 추천 생성",
                     use_container_width=True,
                     type="primary",
                 )
 
                 if generate_button:
-                    overlap = (
-                        set(fixed_numbers)
-                        & set(excluded_numbers)
+                    seed = int(seed_value) if fixed_seed else None
+
+                    (
+                        combinations,
+                        details,
+                        set_summary,
+                    ) = generate_v27_adaptive_sets(
+                        v26_score_df=v26_score_df,
+                        anchor_context=anchor_sum_context,
+                        sequence_context=sum_sequence_context,
+                        game_count=game_count,
+                        candidate_count=candidate_count,
+                        fixed_numbers=fixed_numbers,
+                        excluded_numbers=excluded_numbers,
+                        minimum_spatial_score=minimum_spatial_score,
                     )
 
-                    if overlap:
-                        overlap_text = ", ".join(
-                            str(number)
-                            for number in sorted(overlap)
-                        )
-
-                        raise ValueError(
-                            "고정수와 제외수에 같은 번호가 있습니다: "
-                            + overlap_text
-                        )
-
-                    seed = (
-                        int(seed_value)
-                        if fixed_seed
-                        else None
+                    used_survivor_count = int(
+                        set_summary.get("사용생존번호수", 15)
                     )
 
-                    # ========================================================
-                    # V26 FINAL - 후보풀 자동 확장
-                    #
-                    # 사용자가 지정한 후보수부터 시작하고
-                    # 5개 단위로 자동 확장합니다.
-                    #
-                    # 예:
-                    # 20 → 25 → 30 → 45
-                    # 25 → 30 → 35 → 45
-                    #
-                    # 수동 제외수는 끝까지 제외하고
-                    # 고정수는 계속 유지합니다.
-                    # ========================================================
-
-                    requested_candidate_count = int(
-                        candidate_count
-                    )
-
-                    candidate_steps = [
-                        requested_candidate_count,
-                        min(
-                            45,
-                            requested_candidate_count + 5,
-                        ),
-                        min(
-                            45,
-                            requested_candidate_count + 10,
-                        ),
-                        45,
-                    ]
-
-                    # 중복 단계 제거
-                    candidate_steps = list(
-                        dict.fromkeys(candidate_steps)
-                    )
-
-                    combinations = []
-                    details = []
-                    set_summary = {}
-
-                    used_candidate_count = None
-
-                    for expanded_candidate_count in (
-                        candidate_steps
-                    ):
-                        (
-                            number_scores,
-                            final_excluded_numbers,
-                        ) = recommendation_candidate_scores(
-                            v26_score_df=v26_score_df,
-                            candidate_count=(
-                                expanded_candidate_count
-                            ),
-                            fixed_numbers=fixed_numbers,
-                            excluded_numbers=excluded_numbers,
-                        )
-
-                        (
-                            trial_combinations,
-                            trial_details,
-                            trial_summary,
-                        ) = generate_practical_lotto_set(
-                            number_scores=number_scores,
-                            game_count=game_count,
-                            fixed_numbers=fixed_numbers,
-                            excluded_numbers=(
-                                final_excluded_numbers
-                            ),
-                            historical_draws=draws,
-                            temperature=temperature,
-                            candidate_trials=(
-                                candidate_trials
-                            ),
-                            minimum_spatial_score=(
-                                minimum_spatial_score
-                            ),
-                            random_seed=seed,
-                        )
-
-                        if (
-                            len(trial_combinations)
-                            >= int(game_count)
-                        ):
-                            combinations = (
-                                trial_combinations[
-                                    : int(game_count)
-                                ]
-                            )
-
-                            details = (
-                                trial_details[
-                                    : int(game_count)
-                                ]
-                            )
-
-                            set_summary = trial_summary
-
-                            used_candidate_count = (
-                                expanded_candidate_count
-                            )
-
-                            break
-
-                    if used_candidate_count is not None:
-                        if (
-                            used_candidate_count
-                            > requested_candidate_count
-                        ):
-                            st.info(
-                                "🔄 균형조건 충족을 위해 "
-                                f"후보풀을 자동으로 "
-                                f"{requested_candidate_count}개 → "
-                                f"{used_candidate_count}개로 "
-                                "확장했습니다."
-                            )
-                        else:
-                            st.caption(
-                                "✅ 설정한 후보수 "
-                                f"{requested_candidate_count}개 "
-                                "안에서 5게임 생성에 성공했습니다."
-                            )
-                    if not combinations:
-                        st.warning(
-                            "현재 후보 수와 균형조건으로 추천 조합을 "
-                            "생성하지 못했습니다."
-                        )
+                    if used_survivor_count > 15:
                         st.info(
-                            "후보 번호 수를 늘리거나, 고정수·제외수를 줄이고, "
-                            "최소 공간분산점수를 낮춘 뒤 다시 실행해 주세요."
+                            "🔄 기본 생존번호 15개에서 구조조건을 만족하는 "
+                            f"{game_count}게임이 부족해 {used_survivor_count}개로 최소 확장했습니다."
+                        )
+                    else:
+                        st.caption(
+                            "✅ V26.4 최종 생존번호 15개 안에서 추천 조합을 생성했습니다."
+                        )
+
+                    st.caption(
+                        "🧬 합계수열은 강제구간이 아니라 유사 과거수열의 후속합계·후속번호를 "
+                        "조합 품질점수에 가중하는 방식으로 적용됩니다."
+                    )
+
+                    if len(combinations) < int(game_count):
+                        st.warning(
+                            f"요청 {game_count}게임 중 {len(combinations)}게임만 생성되었습니다."
+                        )
+                    else:
+                        st.success(
+                            "✅ V27 FINAL 적응형 후속패턴 5게임 생성 완료"
+                        )
+
+                    if not combinations:
+                        st.error(
+                            "현재 고정수·제외수 조건으로 조합을 만들 수 없습니다. "
+                            "고정수/제외수만 확인해 주세요."
                         )
 
                     else:
                         st.subheader(
-                            f"🎯 V26 추천 조합 {len(combinations)}게임"
+                            f"🎯 V27 FINAL 추천 조합 {len(combinations)}게임"
                         )
 
                         for index, combination in enumerate(
                             combinations,
                             start=1,
                         ):
+                            # 기존 화면 함수와 호환되도록 기본 feature 사용
                             features = combination_features(combination)
+                            local_features = _portfolio_features(combination)
 
                             detail = (
                                 details[index - 1]
@@ -1876,10 +3216,16 @@ else:
                             balance_score = float(
                                 detail.get("균형점수", 0.0)
                             )
+                            sum_fit = detail.get(
+                                "합계후속적합도",
+                                detail.get("합계수열적합도", 0.0),
+                            )
+                            role_name = detail.get("역할", "일반")
+                            role_target = detail.get("역할목표합계", "-")
 
                             section_text = "-".join(
                                 str(value)
-                                for value in features["구간분포"]
+                                for value in local_features["구간분포"]
                             )
 
                             st.html(
@@ -1910,7 +3256,7 @@ else:
                                             font-size:0.78rem;
                                             font-weight:800;
                                         ">
-                                            PREMIUM
+                                            SUM-FIT {sum_fit:.1f}
                                         </div>
                                     </div>
 
@@ -1950,21 +3296,22 @@ else:
                             render_balls(combination)
 
                             st.caption(
-                                f"합계 {features['합계']} · "
-                                f"홀짝 {features['홀수수']}:{features['짝수수']} · "
-                                f"저고 {features['저번호수']}:{features['고번호수']} · "
+                                f"합계 {local_features['합계']} · "
+                                f"홀짝 {local_features['홀수수']}:{local_features['짝수수']} · "
+                                f"저고 {local_features['저번호수']}:{local_features['고번호수']} · "
                                 f"구간 {section_text}"
                             )
 
                             st.caption(
-                                f"공간분산 {features['공간분산점수']:.1f}점 · "
+                                f"공간분산 {local_features['공간분산점수']:.1f}점 · "
                                 f"균형 {balance_score:.1f}점 · "
                                 f"품질 {quality_score:.2f} · "
-                                f"연속쌍 {features['연속쌍']}개"
+                                f"연속쌍 {local_features['연속쌍']}개 · "
+                                f"합계수열적합도 {sum_fit:.1f}점"
                             )
 
                         st.success(
-                            "🏆 VENUS(MINERVA) AI 추천 조합 "
+                            "🏆 VENUS(MINERVA) V27 FINAL 추천 조합 "
                             "생성이 완료되었습니다. 🍀"
                         )
 
@@ -1984,6 +3331,7 @@ else:
                         "유사후속점수",
                         "간격순번점수",
                         "구조전이점수",
+                        "합계수열후속점수",
                     ]
 
                     display_score_df = v26_score_df[
@@ -2034,4 +3382,4 @@ else:
                         }
                     ).set_index("번호")
 
-                    st.bar_chart(frequency_df)  
+                    st.bar_chart(frequency_df)
