@@ -1596,420 +1596,420 @@ with st.expander("🔍 V26 FINAL DEBUG - 상위번호 기여도 점검", expande
         use_container_width=True,
         hide_index=True,
     )
-        confidence_label, confidence_class = (
-            confidence_text(
-                similarity_confidence
+    confidence_label, confidence_class = (
+        confidence_text(
+            similarity_confidence
+        )
+    )
+
+    st.divider()
+
+    st.subheader(
+        "🏆 V26 종합점수 상위 15개 생존 후보"
+    )
+
+    top_15 = (
+        v26_score_df
+        .sort_values(
+            "V26종합점수",
+            ascending=False,
+                )
+                .head(15)["번호"]
+                .astype(int)
+                .tolist()
             )
-        )
-
-        st.divider()
-
-        st.subheader(
-            "🏆 V26 종합점수 상위 15개 생존 후보"
-        )
-
-        top_15 = (
-            v26_score_df
-            .sort_values(
-                "V26종합점수",
-                ascending=False,
-                    )
-                    .head(15)["번호"]
-                    .astype(int)
-                    .tolist()
+    
+            render_balls(top_15)
+    
+            chart_df = (
+                v26_score_df
+                .sort_values(
+                    "V26종합점수",
+                    ascending=False,
                 )
-        
-                render_balls(top_15)
-        
-                chart_df = (
-                    v26_score_df
-                    .sort_values(
-                        "V26종합점수",
-                        ascending=False,
-                    )
-                    .head(15)
-                    .sort_values("번호")
-                    .set_index("번호")[
-                        ["V26종합점수"]
-                    ]
+                .head(15)
+                .sort_values("번호")
+                .set_index("번호")[
+                    ["V26종합점수"]
+                ]
+            )
+    
+            st.bar_chart(chart_df)
+    
+            confidence_column, sample_column = (
+                st.columns(2)
+            )
+    
+            with confidence_column:
+                st.markdown(
+                    f"""
+                    <div class="engine-card">
+                    유사 후속 분석 신뢰도<br>
+                    <span class="{confidence_class}">
+                    {confidence_label}
+                    · {similarity_confidence * 100:.1f}%
+                    </span>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-        
-                st.bar_chart(chart_df)
-        
-                confidence_column, sample_column = (
-                    st.columns(2)
+    
+            with sample_column:
+                st.markdown(
+                    f"""
+                    <div class="engine-card">
+                    실제 사용된 유사 회차<br>
+                    <b>{len(similar_draws_df):,}개 회차</b>
+                    </div>
+                    """,
+                    unsafe_allow_html=True,
                 )
-        
-                with confidence_column:
-                    st.markdown(
-                        f"""
-                        <div class="engine-card">
-                        유사 후속 분석 신뢰도<br>
-                        <span class="{confidence_class}">
-                        {confidence_label}
-                        · {similarity_confidence * 100:.1f}%
-                        </span>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
+    
+            with st.expander(
+                "🔍 유사 회차 및 후속번호 상세보기"
+            ):
+                if similar_draws_df.empty:
+                    st.warning(
+                        "설정한 최소 유사도 조건을 만족하는 "
+                        "과거 회차가 없습니다."
                     )
-        
-                with sample_column:
-                    st.markdown(
-                        f"""
-                        <div class="engine-card">
-                        실제 사용된 유사 회차<br>
-                        <b>{len(similar_draws_df):,}개 회차</b>
-                        </div>
-                        """,
-                        unsafe_allow_html=True,
-                    )
-        
-                with st.expander(
-                    "🔍 유사 회차 및 후속번호 상세보기"
-                ):
-                    if similar_draws_df.empty:
-                        st.warning(
-                            "설정한 최소 유사도 조건을 만족하는 "
-                            "과거 회차가 없습니다."
-                        )
-        
-                    else:
-                        display_columns = [
-                            column
-                            for column in [
-                                "과거데이터순번",
-                                "과거번호",
-                                "후속번호",
-                                "종합유사도",
-                                "동일번호수",
-                                "인접번호수",
-                                "마킹유사도",
-                                "간격유사도",
-                                "구간유사도",
-                            ]
-                            if column
-                            in similar_draws_df.columns
+    
+                else:
+                    display_columns = [
+                        column
+                        for column in [
+                            "과거데이터순번",
+                            "과거번호",
+                            "후속번호",
+                            "종합유사도",
+                            "동일번호수",
+                            "인접번호수",
+                            "마킹유사도",
+                            "간격유사도",
+                            "구간유사도",
                         ]
-        
-                        similar_display_df = (
-                            similar_draws_df[
-                                display_columns
-                            ].copy()
-                        )
-        
-                        if (
-                            "종합유사도"
-                            in similar_display_df.columns
-                        ):
-                            similar_display_df[
-                                "종합유사도"
-                            ] = (
-                                similar_display_df[
-                                    "종합유사도"
-                                ]
-                                * 100
-                            ).round(2)
-        
-                        st.dataframe(
-                            similar_display_df,
-                            use_container_width=True,
-                            hide_index=True,
-                        )
-        
-                st.divider()
-        
-                generate_button = st.button(
-                    "🚀 V26 균형 추천 조합 생성",
-                    use_container_width=True,
-                    type="primary",
-                )
-        
-                if generate_button:
-                    overlap = (
-                        set(fixed_numbers)
-                        & set(excluded_numbers)
-                    )
-        
-                    if overlap:
-                        overlap_text = ", ".join(
-                            str(number)
-                            for number in sorted(overlap)
-                        )
-        
-                        raise ValueError(
-                            "고정수와 제외수에 같은 번호가 있습니다: "
-                            + overlap_text
-                        )
-        
-                    (
-                        number_scores,
-                        final_excluded_numbers,
-                    ) = recommendation_candidate_scores(
-                        v26_score_df=v26_score_df,
-                        candidate_count=candidate_count,
-                        fixed_numbers=fixed_numbers,
-                        excluded_numbers=excluded_numbers,
-                    )
-        
-                    seed = (
-                        int(seed_value)
-                        if fixed_seed
-                        else None
-                    )
-        
-                    (
-            combinations,
-            details,
-            set_summary,
-        ) = generate_practical_lotto_set(
-            number_scores=number_scores,
-            game_count=game_count,
-            fixed_numbers=fixed_numbers,
-            excluded_numbers=final_excluded_numbers,
-            historical_draws=draws,
-            temperature=temperature,
-            candidate_trials=candidate_trials,
-            minimum_spatial_score=minimum_spatial_score,
-            random_seed=seed,
-        )
-        
-                    if not combinations:
-                        st.warning(
-                            "현재 후보 수와 균형조건으로 추천 조합을 "
-                            "생성하지 못했습니다."
-                        )
-        
-                        st.info(
-                            "후보 번호 수를 늘리거나, 고정수·제외수를 줄이고, "
-                            "최소 공간분산점수를 낮춘 뒤 다시 실행해 주세요."
-                        )
-        
-                    else:
-                        st.subheader(
-                            f"🎯 V26 추천 조합 {len(combinations)}게임"
-                        )
-        
-                        for index, combination in enumerate(
-                    combinations,
-                    start=1,
-                ):
-                            features = combination_features(
-                                combination
-                            )
-                
-                            detail = (
-                                details[index - 1]
-                                if index - 1 < len(details)
-                                else {}
-                            )
-                
-                            quality_score = float(
-                                detail.get(
-                                    "최종품질점수",
-                                    0.0,
-                                )
-                            )
-                
-                            balance_score = float(
-                                detail.get(
-                                    "균형점수",
-                                    0.0,
-                                )
-                            )
-                
-                            section_text = "-".join(
-                                str(value)
-                                for value in features["구간분포"]
-                            )
-                            st.html(
-                f"""
-                                <div class="result-card">
-                                                  <div style="
-                    display:flex;
-                    justify-content:space-between;
-                    align-items:center;
-                    gap:10px;
-                    flex-wrap:wrap;
-                    margin-bottom:10px;
-                ">
-                    <div style="
-                        color:#facc15;
-                        font-size:1.15rem;
-                        font-weight:900;
-                        letter-spacing:0.02em;
-                    ">
-                        🏆 SET {index:02d}
-                    </div>
-
-                    <div style="
-                        padding:4px 10px;
-                        border-radius:999px;
-                        background:rgba(250,204,21,0.14);
-                        border:1px solid rgba(250,204,21,0.38);
-                        color:#fde68a;
-                        font-size:0.78rem;
-                        font-weight:800;
-                    ">
-                        PREMIUM
-                    </div>
-                </div>
-
-                <div style="
-                    display:flex;
-                    gap:7px;
-                    flex-wrap:wrap;
-                ">
-                    <span style="
-                        padding:6px 9px;
-                        border-radius:9px;
-                        background:rgba(74,222,128,0.13);
-                        border:1px solid rgba(74,222,128,0.30);
-                        color:#86efac;
-                        font-size:0.84rem;
-                        font-weight:800;
-                    ">
-                        품질 {quality_score:.2f}
-                    </span>
-
-                    <span style="
-                        padding:6px 9px;
-                        border-radius:9px;
-                        background:rgba(56,189,248,0.13);
-                        border:1px solid rgba(56,189,248,0.30);
-                        color:#7dd3fc;
-                        font-size:0.84rem;
-                        font-weight:800;
-                    ">
-                        균형 {balance_score:.1f}
-                    </span>
-
-                    <span style="
-                        padding:6px 9px;
-                        border-radius:9px;
-                        background:rgba(167,139,250,0.13);
-                        border:1px solid rgba(167,139,250,0.30);
-                        color:#c4b5fd;
-                        font-size:0.84rem;
-                        font-weight:800;
-                    ">
-                                   </span>
-                </div>
-                </div>
-                """
-            )
-                
-                            render_balls(combination)
-                
-                            st.caption(
-                                f"합계 {features['합계']} · "
-                                f"홀짝 "
-                                f"{features['홀수수']}:"
-                                f"{features['짝수수']} · "
-                                f"저고 "
-                                f"{features['저번호수']}:"
-                                f"{features['고번호수']} · "
-                                f"구간 {section_text}"
-                            )
-                
-                            st.caption(
-                                f"공간분산 "
-                                f"{features['공간분산점수']:.1f}점 · "
-                                f"균형 "
-                                f"{balance_score:.1f}점 · "
-                                f"품질 "
-                                f"{quality_score:.2f} · "
-                                f"연속쌍 "
-                                f"{features['연속쌍']}개"
-                            )
-                
-                           
-        
-                        st.success(
-                            "🏆 VENUS(MINERVA) AI 추천 조합 생성이 완료되었습니다. 🍀"
-                        )
-                    st.divider()
-        
-                left, right = st.columns(
-                    [1.3, 1]
-                )
-        
-                with left:
-                    st.subheader(
-                        "📊 V26 번호별 통합점수"
-                    )
-        
-                    display_score_columns = [
-                        "순위",
-                        "번호",
-                        "V26종합점수",
-                        "기존11종합",
-                        "마킹패턴점수",
-                        "유사후속점수",
-                        "간격순번점수",
-                        "구조전이점수",
+                        if column
+                        in similar_draws_df.columns
                     ]
-        
-                    display_score_df = (
-                        v26_score_df[
-                            display_score_columns
+    
+                    similar_display_df = (
+                        similar_draws_df[
+                            display_columns
                         ].copy()
                     )
-        
-                    score_percent_columns = [
-                        "기존11종합",
-                        "마킹패턴점수",
-                        "유사후속점수",
-                        "간격순번점수",
-                        "구조전이점수",
-                    ]
-        
-                    for column in score_percent_columns:
-                        display_score_df[column] = (
-                            display_score_df[column]
-                            .astype(float)
-                            .mul(100)
-                            .round(2)
-                        )
-        
-                    display_score_df[
-                        "V26종합점수"
-                    ] = (
-                        display_score_df[
-                            "V26종합점수"
-                        ]
-                        .astype(float)
-                        .round(2)
-                    )
-        
+    
+                    if (
+                        "종합유사도"
+                        in similar_display_df.columns
+                    ):
+                        similar_display_df[
+                            "종합유사도"
+                        ] = (
+                            similar_display_df[
+                                "종합유사도"
+                            ]
+                            * 100
+                        ).round(2)
+    
                     st.dataframe(
-                        display_score_df,
+                        similar_display_df,
                         use_container_width=True,
                         hide_index=True,
                     )
-        
-                with right:
+    
+            st.divider()
+    
+            generate_button = st.button(
+                "🚀 V26 균형 추천 조합 생성",
+                use_container_width=True,
+                type="primary",
+            )
+    
+            if generate_button:
+                overlap = (
+                    set(fixed_numbers)
+                    & set(excluded_numbers)
+                )
+    
+                if overlap:
+                    overlap_text = ", ".join(
+                        str(number)
+                        for number in sorted(overlap)
+                    )
+    
+                    raise ValueError(
+                        "고정수와 제외수에 같은 번호가 있습니다: "
+                        + overlap_text
+                    )
+    
+                (
+                    number_scores,
+                    final_excluded_numbers,
+                ) = recommendation_candidate_scores(
+                    v26_score_df=v26_score_df,
+                    candidate_count=candidate_count,
+                    fixed_numbers=fixed_numbers,
+                    excluded_numbers=excluded_numbers,
+                )
+    
+                seed = (
+                    int(seed_value)
+                    if fixed_seed
+                    else None
+                )
+    
+                (
+        combinations,
+        details,
+        set_summary,
+    ) = generate_practical_lotto_set(
+        number_scores=number_scores,
+        game_count=game_count,
+        fixed_numbers=fixed_numbers,
+        excluded_numbers=final_excluded_numbers,
+        historical_draws=draws,
+        temperature=temperature,
+        candidate_trials=candidate_trials,
+        minimum_spatial_score=minimum_spatial_score,
+        random_seed=seed,
+    )
+    
+                if not combinations:
+                    st.warning(
+                        "현재 후보 수와 균형조건으로 추천 조합을 "
+                        "생성하지 못했습니다."
+                    )
+    
+                    st.info(
+                        "후보 번호 수를 늘리거나, 고정수·제외수를 줄이고, "
+                        "최소 공간분산점수를 낮춘 뒤 다시 실행해 주세요."
+                    )
+    
+                else:
                     st.subheader(
-                        "🔥 최근 30회 출현 횟수"
+                        f"🎯 V26 추천 조합 {len(combinations)}게임"
                     )
-        
-                    recent_30_count = frequency_counts(
-                        df=df,
-                        number_columns=number_columns,
-                        window=30,
+    
+                    for index, combination in enumerate(
+                combinations,
+                start=1,
+            ):
+                        features = combination_features(
+                            combination
+                        )
+            
+                        detail = (
+                            details[index - 1]
+                            if index - 1 < len(details)
+                            else {}
+                        )
+            
+                        quality_score = float(
+                            detail.get(
+                                "최종품질점수",
+                                0.0,
+                            )
+                        )
+            
+                        balance_score = float(
+                            detail.get(
+                                "균형점수",
+                                0.0,
+                            )
+                        )
+            
+                        section_text = "-".join(
+                            str(value)
+                            for value in features["구간분포"]
+                        )
+                        st.html(
+            f"""
+                            <div class="result-card">
+                                              <div style="
+                display:flex;
+                justify-content:space-between;
+                align-items:center;
+                gap:10px;
+                flex-wrap:wrap;
+                margin-bottom:10px;
+            ">
+                <div style="
+                    color:#facc15;
+                    font-size:1.15rem;
+                    font-weight:900;
+                    letter-spacing:0.02em;
+                ">
+                    🏆 SET {index:02d}
+                </div>
+
+                <div style="
+                    padding:4px 10px;
+                    border-radius:999px;
+                    background:rgba(250,204,21,0.14);
+                    border:1px solid rgba(250,204,21,0.38);
+                    color:#fde68a;
+                    font-size:0.78rem;
+                    font-weight:800;
+                ">
+                    PREMIUM
+                </div>
+            </div>
+
+            <div style="
+                display:flex;
+                gap:7px;
+                flex-wrap:wrap;
+            ">
+                <span style="
+                    padding:6px 9px;
+                    border-radius:9px;
+                    background:rgba(74,222,128,0.13);
+                    border:1px solid rgba(74,222,128,0.30);
+                    color:#86efac;
+                    font-size:0.84rem;
+                    font-weight:800;
+                ">
+                    품질 {quality_score:.2f}
+                </span>
+
+                <span style="
+                    padding:6px 9px;
+                    border-radius:9px;
+                    background:rgba(56,189,248,0.13);
+                    border:1px solid rgba(56,189,248,0.30);
+                    color:#7dd3fc;
+                    font-size:0.84rem;
+                    font-weight:800;
+                ">
+                    균형 {balance_score:.1f}
+                </span>
+
+                <span style="
+                    padding:6px 9px;
+                    border-radius:9px;
+                    background:rgba(167,139,250,0.13);
+                    border:1px solid rgba(167,139,250,0.30);
+                    color:#c4b5fd;
+                    font-size:0.84rem;
+                    font-weight:800;
+                ">
+                               </span>
+            </div>
+            </div>
+            """
+        )
+            
+                        render_balls(combination)
+            
+                        st.caption(
+                            f"합계 {features['합계']} · "
+                            f"홀짝 "
+                            f"{features['홀수수']}:"
+                            f"{features['짝수수']} · "
+                            f"저고 "
+                            f"{features['저번호수']}:"
+                            f"{features['고번호수']} · "
+                            f"구간 {section_text}"
+                        )
+            
+                        st.caption(
+                            f"공간분산 "
+                            f"{features['공간분산점수']:.1f}점 · "
+                            f"균형 "
+                            f"{balance_score:.1f}점 · "
+                            f"품질 "
+                            f"{quality_score:.2f} · "
+                            f"연속쌍 "
+                            f"{features['연속쌍']}개"
+                        )
+            
+                       
+    
+                    st.success(
+                        "🏆 VENUS(MINERVA) AI 추천 조합 생성이 완료되었습니다. 🍀"
                     )
-        
-                    frequency_df = pd.DataFrame(
-                        {
-                            "번호": np.arange(1, 46),
-                            "출현횟수": (
-                                recent_30_count.astype(int)
-                            ),
-                        }
-                    ).set_index("번호")
-        
-                    st.bar_chart(
-                        frequency_df
+                st.divider()
+    
+            left, right = st.columns(
+                [1.3, 1]
+            )
+    
+            with left:
+                st.subheader(
+                    "📊 V26 번호별 통합점수"
+                )
+    
+                display_score_columns = [
+                    "순위",
+                    "번호",
+                    "V26종합점수",
+                    "기존11종합",
+                    "마킹패턴점수",
+                    "유사후속점수",
+                    "간격순번점수",
+                    "구조전이점수",
+                ]
+    
+                display_score_df = (
+                    v26_score_df[
+                        display_score_columns
+                    ].copy()
+                )
+    
+                score_percent_columns = [
+                    "기존11종합",
+                    "마킹패턴점수",
+                    "유사후속점수",
+                    "간격순번점수",
+                    "구조전이점수",
+                ]
+    
+                for column in score_percent_columns:
+                    display_score_df[column] = (
+                        display_score_df[column]
+                        .astype(float)
+                        .mul(100)
+                        .round(2)
                     )
-        
-                   
+    
+                display_score_df[
+                    "V26종합점수"
+                ] = (
+                    display_score_df[
+                        "V26종합점수"
+                    ]
+                    .astype(float)
+                    .round(2)
+                )
+    
+                st.dataframe(
+                    display_score_df,
+                    use_container_width=True,
+                    hide_index=True,
+                )
+    
+            with right:
+                st.subheader(
+                    "🔥 최근 30회 출현 횟수"
+                )
+    
+                recent_30_count = frequency_counts(
+                    df=df,
+                    number_columns=number_columns,
+                    window=30,
+                )
+    
+                frequency_df = pd.DataFrame(
+                    {
+                        "번호": np.arange(1, 46),
+                        "출현횟수": (
+                            recent_30_count.astype(int)
+                        ),
+                    }
+                ).set_index("번호")
+    
+                st.bar_chart(
+                    frequency_df
+                )
+    
+               
