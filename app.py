@@ -1596,23 +1596,23 @@ with st.expander("🔍 V26 FINAL DEBUG - 상위번호 기여도 점검", expande
         use_container_width=True,
         hide_index=True,
     )
-                confidence_label, confidence_class = (
-                    confidence_text(
-                        similarity_confidence
-                    )
-                )
-        
-                st.divider()
-        
-                st.subheader(
-                    "🏆 V26 종합점수 상위 15개 생존 후보"
-                )
-        
-                top_15 = (
-                    v26_score_df
-                    .sort_values(
-                        "V26종합점수",
-                        ascending=False,
+        confidence_label, confidence_class = (
+            confidence_text(
+                similarity_confidence
+            )
+        )
+
+        st.divider()
+
+        st.subheader(
+            "🏆 V26 종합점수 상위 15개 생존 후보"
+        )
+
+        top_15 = (
+            v26_score_df
+            .sort_values(
+                "V26종합점수",
+                ascending=False,
                     )
                     .head(15)["번호"]
                     .astype(int)
