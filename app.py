@@ -1566,7 +1566,36 @@ else:
                     similarity_top_k=similarity_top_k,
                     minimum_similarity=minimum_similarity,
                 )
-        
+
+    # ============================================================
+# V26 FINAL DEBUG - 15대 분석 실제 기여도 점검
+# 계산에는 영향을 주지 않고 화면 확인용으로만 사용
+# ============================================================
+
+with st.expander("🔍 V26 FINAL DEBUG - 상위번호 기여도 점검", expanded=False):
+
+    debug_columns = [
+        "번호",
+        "기존11가중점수",
+        "마킹가중점수",
+        "유사가중점수",
+        "간격가중점수",
+        "전이가중점수",
+        "V26종합점수",
+    ]
+
+    debug_df = (
+        v26_score_df[debug_columns]
+        .sort_values("V26종합점수", ascending=False)
+        .head(10)
+        .copy()
+    )
+
+    st.dataframe(
+        debug_df,
+        use_container_width=True,
+        hide_index=True,
+    )
                 confidence_label, confidence_class = (
                     confidence_text(
                         similarity_confidence
