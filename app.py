@@ -1699,7 +1699,7 @@ else:
                     type="primary",
                 )
 
-                              if generate_button:
+                if generate_button:
                     overlap = (
                         set(fixed_numbers)
                         & set(excluded_numbers)
