@@ -1619,9 +1619,9 @@ with st.expander("🔍 V26 FINAL DEBUG - 상위번호 기여도 점검", expande
                 .tolist()
             )
     
-            render_balls(top_15)
+     render_balls(top_15)
     
-            chart_df = (
+     chart_df = (
                 v26_score_df
                 .sort_values(
                     "V26종합점수",
