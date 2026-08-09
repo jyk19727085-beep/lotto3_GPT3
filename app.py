@@ -1699,45 +1699,150 @@ else:
                     type="primary",
                 )
 
-                if generate_button:
-                    overlap = set(fixed_numbers) & set(excluded_numbers)
+                              if generate_button:
+                    overlap = (
+                        set(fixed_numbers)
+                        & set(excluded_numbers)
+                    )
 
                     if overlap:
                         overlap_text = ", ".join(
                             str(number)
                             for number in sorted(overlap)
                         )
+
                         raise ValueError(
                             "고정수와 제외수에 같은 번호가 있습니다: "
                             + overlap_text
                         )
 
-                    (
-                        number_scores,
-                        final_excluded_numbers,
-                    ) = recommendation_candidate_scores(
-                        v26_score_df=v26_score_df,
-                        candidate_count=candidate_count,
-                        fixed_numbers=fixed_numbers,
-                        excluded_numbers=excluded_numbers,
+                    seed = (
+                        int(seed_value)
+                        if fixed_seed
+                        else None
                     )
 
-                    seed = int(seed_value) if fixed_seed else None
+                    # ========================================================
+                    # V26 FINAL - 후보풀 자동 확장
+                    #
+                    # 사용자가 지정한 후보수부터 시작하고
+                    # 5개 단위로 자동 확장합니다.
+                    #
+                    # 예:
+                    # 20 → 25 → 30 → 45
+                    # 25 → 30 → 35 → 45
+                    #
+                    # 수동 제외수는 끝까지 제외하고
+                    # 고정수는 계속 유지합니다.
+                    # ========================================================
 
-                    combinations, details, set_summary = (
-                        generate_practical_lotto_set(
+                    requested_candidate_count = int(
+                        candidate_count
+                    )
+
+                    candidate_steps = [
+                        requested_candidate_count,
+                        min(
+                            45,
+                            requested_candidate_count + 5,
+                        ),
+                        min(
+                            45,
+                            requested_candidate_count + 10,
+                        ),
+                        45,
+                    ]
+
+                    # 중복 단계 제거
+                    candidate_steps = list(
+                        dict.fromkeys(candidate_steps)
+                    )
+
+                    combinations = []
+                    details = []
+                    set_summary = {}
+
+                    used_candidate_count = None
+
+                    for expanded_candidate_count in (
+                        candidate_steps
+                    ):
+                        (
+                            number_scores,
+                            final_excluded_numbers,
+                        ) = recommendation_candidate_scores(
+                            v26_score_df=v26_score_df,
+                            candidate_count=(
+                                expanded_candidate_count
+                            ),
+                            fixed_numbers=fixed_numbers,
+                            excluded_numbers=excluded_numbers,
+                        )
+
+                        (
+                            trial_combinations,
+                            trial_details,
+                            trial_summary,
+                        ) = generate_practical_lotto_set(
                             number_scores=number_scores,
                             game_count=game_count,
                             fixed_numbers=fixed_numbers,
-                            excluded_numbers=final_excluded_numbers,
+                            excluded_numbers=(
+                                final_excluded_numbers
+                            ),
                             historical_draws=draws,
                             temperature=temperature,
-                            candidate_trials=candidate_trials,
-                            minimum_spatial_score=minimum_spatial_score,
+                            candidate_trials=(
+                                candidate_trials
+                            ),
+                            minimum_spatial_score=(
+                                minimum_spatial_score
+                            ),
                             random_seed=seed,
                         )
-                    )
 
+                        if (
+                            len(trial_combinations)
+                            >= int(game_count)
+                        ):
+                            combinations = (
+                                trial_combinations[
+                                    : int(game_count)
+                                ]
+                            )
+
+                            details = (
+                                trial_details[
+                                    : int(game_count)
+                                ]
+                            )
+
+                            set_summary = trial_summary
+
+                            used_candidate_count = (
+                                expanded_candidate_count
+                            )
+
+                            break
+
+                    if used_candidate_count is not None:
+                        if (
+                            used_candidate_count
+                            > requested_candidate_count
+                        ):
+                            st.info(
+                                "🔄 균형조건 충족을 위해 "
+                                f"후보풀을 자동으로 "
+                                f"{requested_candidate_count}개 → "
+                                f"{used_candidate_count}개로 "
+                                "확장했습니다."
+                            )
+                        else:
+                            st.caption(
+                                "✅ 설정한 후보수 "
+                                f"{requested_candidate_count}개 "
+                                "안에서 5게임 생성에 성공했습니다."
+                            )
                     if not combinations:
                         st.warning(
                             "현재 후보 수와 균형조건으로 추천 조합을 "
