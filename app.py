@@ -26,14 +26,14 @@ from engine.set_optimizer import (
 )
 
 # =========================================================
-# LOTTO GPT V27.1 FINAL
+# LOTTO GPT V27.2 FINAL
 # 15대 분석가설 + 유사후속 + 마킹패턴
 # + 구조전이 + 다양성 조합 생성기
 # =========================================================
 
 
 st.set_page_config(
-    page_title="LOTTO GPT V27.1 FINAL",
+    page_title="LOTTO GPT V27.2 FINAL",
     page_icon="🎯",
     layout="wide",
     initial_sidebar_state="expanded",
@@ -653,38 +653,58 @@ def parse_round_values(series: pd.Series) -> pd.Series:
 def detect_round_column(
     df: pd.DataFrame,
 ) -> Optional[str]:
-    """회차 열을 이름 + 실제 값 패턴으로 자동 탐색합니다."""
+    """회차 열을 이름 + 연속 회차 패턴으로 안전하게 자동 탐색합니다."""
 
+    # 1순위: 열 이름 자체가 회차를 뜻하는 경우
     named_candidates = []
-
     for column in df.columns:
         cleaned = clean_column_name(column).lower()
-
-        if any(
-            keyword in cleaned
-            for keyword in ["회차", "round", "draw"]
-        ):
+        if any(keyword in cleaned for keyword in ["회차", "round", "draw"]):
             named_candidates.append(column)
 
     if named_candidates:
-        return named_candidates[0]
+        # 이름 후보가 여러 개면 실제 회차형 값이 가장 많은 열을 선택
+        def named_score(column):
+            parsed = parse_round_values(df[column]).dropna()
+            if len(parsed) == 0:
+                return (-1, -1)
+            return (int(parsed.nunique()), int(parsed.max()))
 
-    # 이름이 불명확한 구형 시트도 실제 값이 '1회, 2회...'인지 확인
+        return max(named_candidates, key=named_score)
+
+    # 2순위: 이름이 불명확한 구형 시트.
+    # 단순히 "양수/고유값"만 보지 않고 1,2,3... 형태의 회차 연속성을 요구합니다.
     best_column = None
     best_score = -1.0
 
     for column in df.columns:
-        parsed = parse_round_values(df[column])
-        valid = parsed.dropna()
-
-        if len(valid) < 20:
+        parsed = parse_round_values(df[column]).dropna().astype(int)
+        if len(parsed) < 50:
             continue
 
-        positive_ratio = float((valid > 0).mean())
-        unique_ratio = float(valid.nunique() / max(len(valid), 1))
-        score = positive_ratio * 0.6 + unique_ratio * 0.4
+        values = parsed.to_numpy()
+        unique_ratio = float(pd.Series(values).nunique() / max(len(values), 1))
+        if unique_ratio < 0.90:
+            continue
 
-        if score > best_score:
+        sorted_unique = np.sort(np.unique(values))
+        if len(sorted_unique) < 50:
+            continue
+
+        diffs = np.diff(sorted_unique)
+        one_step_ratio = float((diffs == 1).mean()) if len(diffs) else 0.0
+        starts_near_one = 1.0 if sorted_unique[0] <= 5 else 0.0
+        monotonic_ratio = float((np.diff(values) >= 0).mean()) if len(values) > 1 else 0.0
+
+        # 회차열은 대부분 +1씩 증가하고, 초반 회차부터 시작하며, 중복이 거의 없어야 합니다.
+        score = (
+            one_step_ratio * 0.55
+            + starts_near_one * 0.20
+            + monotonic_ratio * 0.15
+            + unique_ratio * 0.10
+        )
+
+        if one_step_ratio >= 0.85 and score > best_score:
             best_score = score
             best_column = column
 
@@ -810,13 +830,37 @@ def prepare_lotto_data(
     return df, number_columns, round_column
 
 
-def sheet_lotto_quality(raw_df: pd.DataFrame) -> Tuple[int, int, int]:
-    """시트 자동선택용 품질점수: 최신회차, 유효행수, 표준열 보너스."""
+def sheet_lotto_quality(raw_df: pd.DataFrame) -> Tuple[int, int, int, int, int]:
+    """시트 자동선택용 품질점수.
+
+    우선순위:
+    1) 1P~6P 표준 당첨번호 열
+    2) 명시적인 회차 열
+    3) 회차 연속성
+    4) 최신회차
+    5) 유효행수
+
+    주의: 최신회차 숫자가 크다는 이유로 통계/패턴 시트를 선택하지 않습니다.
+
+    이렇게 해야 패턴표의 큰 숫자를 '최신회차'로 오인하지 않습니다.
+    """
 
     try:
         prepared, nums, round_col = prepare_lotto_data(raw_df)
     except Exception:
-        return (-1, -1, -1)
+        return (-1, -1, -1, -1, -1)
+
+    normalized_nums = [clean_column_name(c).upper() for c in nums]
+    standard_bonus = int(
+        normalized_nums == ["1P", "2P", "3P", "4P", "5P", "6P"]
+    )
+
+    explicit_round_bonus = 0
+    if round_col is not None:
+        cleaned_round = clean_column_name(round_col).lower()
+        explicit_round_bonus = int(
+            any(k in cleaned_round for k in ["회차", "round", "draw"])
+        )
 
     latest = (
         int(prepared[round_col].max())
@@ -824,12 +868,21 @@ def sheet_lotto_quality(raw_df: pd.DataFrame) -> Tuple[int, int, int]:
         else len(prepared)
     )
 
-    standard_bonus = int(
-        [clean_column_name(c).upper() for c in nums]
-        == ["1P", "2P", "3P", "4P", "5P", "6P"]
-    )
+    continuity_score = 0
+    if round_col is not None and len(prepared) >= 20:
+        rounds = np.sort(prepared[round_col].astype(int).unique())
+        if len(rounds) > 1:
+            continuity_score = int(round(float((np.diff(rounds) == 1).mean()) * 1000))
 
-    return latest, len(prepared), standard_bonus
+    # 자동 시트 선택은 "큰 숫자"보다 구조 신뢰도를 먼저 봅니다.
+    # 1P~6P + 명시적 회차 열이 있는 원본 회차 시트가 최우선입니다.
+    return (
+        standard_bonus,
+        explicit_round_bonus,
+        continuity_score,
+        latest,
+        len(prepared),
+    )
 
 
 # =========================================================
@@ -2372,7 +2425,6 @@ uploaded_file = st.sidebar.file_uploader(
     type=["xlsx"],
 )
 
-sheet_selector_placeholder = st.sidebar.empty()
 st.sidebar.divider()
 
 st.sidebar.header("⚙️ 기존 11대 분석가설")
@@ -2654,8 +2706,9 @@ if uploaded_file is None:
         | 1 | 10 | 23 | 29 | 33 | 37 | 40 |
         | 2 | 9 | 13 | 21 | 25 | 32 | 42 |
 
-        기존 분석 엑셀에서는 당첨번호 6개와 회차가 들어 있는
-        **번호별 시트**를 먼저 선택해 주세요.
+        업로드하면 프로그램이 모든 시트를 검사해
+        **회차 + 당첨번호 6개가 가장 완전한 원본 시트를 자동 선택**합니다.
+        사용자가 시트를 따로 선택할 필요가 없습니다.
         """
     )
 
@@ -2664,7 +2717,8 @@ else:
                 excel_file = pd.ExcelFile(uploaded_file)
                 sheet_names = excel_file.sheet_names
 
-                # 모든 시트를 실제로 검사해 가장 완전한 회차별 시트를 자동선택
+                # 모든 시트를 실제로 검사해 가장 완전한 회차별 원본 시트를 자동선택.
+                # 사용자가 시트를 고를 필요가 없으며, 패턴/통계 시트는 자동 배제됩니다.
                 sheet_quality_map = {}
 
                 for sheet_name in sheet_names:
@@ -2675,24 +2729,28 @@ else:
                         )
                         sheet_quality_map[sheet_name] = sheet_lotto_quality(probe_df)
                     except Exception:
-                        sheet_quality_map[sheet_name] = (-1, -1, -1)
+                        sheet_quality_map[sheet_name] = (-1, -1, -1, -1, -1)
+
+                valid_sheets = [
+                    name
+                    for name in sheet_names
+                    if sheet_quality_map.get(name, (-1, -1, -1, -1, -1))[0] >= 0
+                ]
+
+                if not valid_sheets:
+                    raise ValueError(
+                        "회차와 당첨번호 6개가 들어 있는 정상 분석 시트를 자동으로 찾지 못했습니다."
+                    )
 
                 best_sheet = max(
-                    sheet_names,
-                    key=lambda name: sheet_quality_map.get(name, (-1, -1, -1)),
-                )
-
-                default_sheet_index = sheet_names.index(best_sheet)
-
-                selected_sheet = sheet_selector_placeholder.selectbox(
-                    "분석할 엑셀 시트 선택",
-                    options=sheet_names,
-                    index=default_sheet_index,
-                    help=(
-                        "V26.3은 회차·1P~6P 구조와 최신회차를 검사해 "
-                        "가장 완전한 시트를 자동으로 먼저 선택합니다."
+                    valid_sheets,
+                    key=lambda name: sheet_quality_map.get(
+                        name, (-1, -1, -1, -1, -1)
                     ),
                 )
+
+                # 완전 자동: 드롭다운을 없애고 최적 시트를 그대로 사용
+                selected_sheet = best_sheet
 
                 raw_df = pd.read_excel(
                     uploaded_file,
@@ -2739,9 +2797,8 @@ else:
                             data_warning = f"중간에 누락된 회차가 {missing_count}개 있습니다."
 
                 st.caption(
-                    f"✅ 자동선택 시트: {best_sheet} · "
-                    f"현재 분석 시트: {selected_sheet} · "
-                    f"유효 {len(df):,}회"
+                    f"✅ 자동 분석 시트: {selected_sheet} · "
+                    f"유효 {len(df):,}회 · 최신 {latest_round:,}회"
                 )
 
                 if data_warning:
@@ -2918,7 +2975,7 @@ else:
                 )
 
                 with st.expander(
-                    "⚙️ V27.1 핵심패턴 기본가중치·보강점수",
+                    "⚙️ V27.2 FINAL 핵심패턴 기본가중치·보강점수",
                     expanded=False,
                 ):
                     st.caption(
@@ -3134,7 +3191,7 @@ else:
                 st.divider()
 
                 generate_button = st.button(
-                    "🚀 V27 FINAL 후속패턴 추천 생성",
+                    "🚀 V27.2 FINAL 후속패턴 추천 생성",
                     use_container_width=True,
                     type="primary",
                 )
@@ -3182,7 +3239,7 @@ else:
                         )
                     else:
                         st.success(
-                            "✅ V27 FINAL 적응형 후속패턴 5게임 생성 완료"
+                            "✅ V27.2 FINAL 적응형 후속패턴 5게임 생성 완료"
                         )
 
                     if not combinations:
@@ -3193,7 +3250,7 @@ else:
 
                     else:
                         st.subheader(
-                            f"🎯 V27 FINAL 추천 조합 {len(combinations)}게임"
+                            f"🎯 V27.2 FINAL 추천 조합 {len(combinations)}게임"
                         )
 
                         for index, combination in enumerate(
@@ -3202,7 +3259,7 @@ else:
                         ):
                             # 기존 화면 함수와 호환되도록 기본 feature 사용
                             features = combination_features(combination)
-                            local_features = _portfolio_features(combination)
+                            local_features = _sequence_features(combination)
 
                             detail = (
                                 details[index - 1]
