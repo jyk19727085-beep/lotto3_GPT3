@@ -26,9 +26,9 @@ from engine.set_optimizer import (
 )
 
 # =========================================================
-# LOTTO GPT V27.2 FINAL
-# 15대 분석가설 + 유사후속 + 마킹패턴
-# + 구조전이 + 다양성 조합 생성기
+# LOTTO GPT V27.2.1 SUM-DISTRIBUTION HOTFIX
+# V27.2 FINAL BASELINE 15대 가설/기본값은 그대로 보존
+# 부분 수정: 합계 역할 분산 + 최종 5게임 합계 중복 패널티 + 진단창
 # =========================================================
 
 
@@ -1527,123 +1527,147 @@ def build_adaptive_sum_roles(
     game_count: int = 5,
 ) -> List[dict]:
     """
-    5게임 역할을 데이터에서 자동 결정합니다.
+    V27.2.1 HOTFIX - 합계분포 역할 생성기.
 
-    기본 철학:
-    - 반복되는 후속합계가 있으면 1게임은 MODE
-    - 중심값 주변은 2게임을 기본 축으로 사용
-    - 남은 게임은 상단/하단 꼬리의 실제 증거비중에 따라 배분
-    - 합계를 정확히 맞추는 하드룰이 아니라 역할별 soft target
+    BASELINE 가중치는 전혀 변경하지 않습니다.
+    수정 목적은 '최빈합계/중앙값이 동일할 때 5게임이 한 합계에 몰리는 현상'을 줄이는 것입니다.
+
+    원칙:
+    - 동일합계 후속사례의 mode는 1게임만 핵심축으로 사용
+    - 중앙값은 1게임 핵심축
+    - Q25 / Q75를 하단·상단 대표축으로 사용
+    - 가중평균은 분포의 브리지 역할로 사용
+    - 모두 soft target이며 하드 필터가 아님
     """
     game_count = max(1, int(game_count))
-    current_sum = int(anchor_context.get("현재합계", 0))
-    center_target = float(
-        anchor_context.get(
-            "후속합계중앙",
-            sequence_context.get("후속합계중앙", current_sum),
-        )
-    )
+
+    current_sum = float(anchor_context.get("현재합계", 0.0))
+
+    anchor_q25 = float(anchor_context.get("후속합계Q25", current_sum))
+    anchor_q50 = float(anchor_context.get("후속합계중앙", current_sum))
+    anchor_q75 = float(anchor_context.get("후속합계Q75", current_sum))
+    anchor_mean = float(anchor_context.get("후속합계가중평균", anchor_q50))
+
+    seq_q25 = float(sequence_context.get("후속합계Q25", anchor_q25))
+    seq_q50 = float(sequence_context.get("후속합계중앙", anchor_q50))
+    seq_q75 = float(sequence_context.get("후속합계Q75", anchor_q75))
+    seq_mean = float(sequence_context.get("후속합계가중평균", anchor_mean))
+
+    # 동일합계 사례를 70%, 합계수열 유사사례를 30% 반영.
+    lower_target = 0.70 * anchor_q25 + 0.30 * seq_q25
+    center_target = 0.70 * anchor_q50 + 0.30 * seq_q50
+    upper_target = 0.70 * anchor_q75 + 0.30 * seq_q75
+    bridge_target = 0.70 * anchor_mean + 0.30 * seq_mean
+
     mode_target = anchor_context.get("반복모드합계")
     mode_count = int(anchor_context.get("반복모드횟수", 0))
 
-    upper_target = float(
-        anchor_context.get(
-            "상단대표합계",
-            sequence_context.get("후속합계Q75", center_target),
-        )
-    )
-    lower_target = float(
-        anchor_context.get(
-            "하단대표합계",
-            sequence_context.get("후속합계Q25", center_target),
-        )
-    )
+    roles: List[dict] = []
 
-    roles = []
-
+    # 1) 반복 mode가 실제 2회 이상이면 1게임만 배정
     if mode_target is not None and mode_count >= 2 and len(roles) < game_count:
-        roles.append(
-            {
-                "역할": "반복모드",
-                "목표합계": float(mode_target),
-                "방향": "mode",
-            }
-        )
+        roles.append({
+            "역할": "반복모드",
+            "목표합계": float(mode_target),
+            "방향": "mode",
+        })
 
-    # 중심축은 최대 2게임
-    while len(roles) < min(game_count, 3):
-        roles.append(
-            {
-                "역할": "중심",
-                "목표합계": center_target,
-                "방향": "center",
-            }
-        )
+    # 2) 중심축 1게임
+    if len(roles) < game_count:
+        roles.append({
+            "역할": "중심",
+            "목표합계": float(center_target),
+            "방향": "center",
+        })
 
-    remaining = game_count - len(roles)
+    # 3) 하단/상단 분위수 축
+    if len(roles) < game_count:
+        roles.append({
+            "역할": "하단Q25",
+            "목표합계": float(lower_target),
+            "방향": "lower",
+        })
 
-    # tail evidence는 동일합계 후속사례 70% + 수열 유사사례 30%
-    anchor_upper = float(anchor_context.get("상단가중비중", 0.0))
-    anchor_lower = float(anchor_context.get("하단가중비중", 0.0))
+    if len(roles) < game_count:
+        roles.append({
+            "역할": "상단Q75",
+            "목표합계": float(upper_target),
+            "방향": "upper",
+        })
 
-    seq_sums = np.asarray(
-        sequence_context.get("후속합계", []),
-        dtype=float,
-    )
-    seq_weights = np.asarray(
-        sequence_context.get("후속가중치", []),
-        dtype=float,
-    )
-    if (
-        len(seq_sums)
-        and len(seq_weights) == len(seq_sums)
-        and seq_weights.sum() > 0
-    ):
-        seq_upper = float(
-            seq_weights[seq_sums > current_sum].sum()
-            / seq_weights.sum()
-        )
-        seq_lower = float(
-            seq_weights[seq_sums < center_target].sum()
-            / seq_weights.sum()
-        )
-    else:
-        seq_upper = 0.0
-        seq_lower = 0.0
+    # 4) 평균 브리지 - 중앙과 꼬리 사이 연결축
+    if len(roles) < game_count:
+        roles.append({
+            "역할": "분포브리지",
+            "목표합계": float(bridge_target),
+            "방향": "bridge",
+        })
 
-    upper_evidence = 0.70 * anchor_upper + 0.30 * seq_upper
-    lower_evidence = 0.70 * anchor_lower + 0.30 * seq_lower
-
-    for slot in range(remaining):
-        # 첫 tail은 강한 쪽, 두 번째 tail은 차이가 작으면 반대쪽도 분산
-        if slot == 0:
-            choose_upper = upper_evidence >= lower_evidence
-        else:
-            if abs(upper_evidence - lower_evidence) <= 0.08:
-                choose_upper = roles[-1]["방향"] != "upper"
-            else:
-                choose_upper = upper_evidence >= lower_evidence
-
-        if choose_upper:
-            roles.append(
-                {
-                    "역할": "상단",
-                    "목표합계": upper_target,
-                    "방향": "upper",
-                }
-            )
-        else:
-            roles.append(
-                {
-                    "역할": "하단",
-                    "목표합계": lower_target,
-                    "방향": "lower",
-                }
-            )
+    # 5게임을 초과 요청한 경우 Q25/Q75/중심을 순환하되 soft target으로만 사용
+    cycle = [
+        ("하단분산", lower_target, "lower"),
+        ("상단분산", upper_target, "upper"),
+        ("중심분산", center_target, "center"),
+        ("브리지분산", bridge_target, "bridge"),
+    ]
+    idx = 0
+    while len(roles) < game_count:
+        name, target, direction = cycle[idx % len(cycle)]
+        roles.append({
+            "역할": name,
+            "목표합계": float(target),
+            "방향": direction,
+        })
+        idx += 1
 
     return roles[:game_count]
 
 
+def _portfolio_sum_diversity_penalty(
+    total: int,
+    selected_totals: List[int],
+) -> float:
+    """
+    이미 선택된 게임들과 합계가 지나치게 비슷할 때만 약한 패널티를 줍니다.
+    하드 컷이 아니므로 좋은 조합은 여전히 선택될 수 있습니다.
+    """
+    if not selected_totals:
+        return 0.0
+
+    nearest_gap = min(abs(int(total) - int(prev)) for prev in selected_totals)
+
+    if nearest_gap <= 1:
+        return 8.0
+    if nearest_gap <= 3:
+        return 5.0
+    if nearest_gap <= 6:
+        return 2.0
+    return 0.0
+
+
+def _sum_distribution_diagnostics(records: List[dict]) -> dict:
+    """후보조합 합계분포를 진단용으로 요약합니다."""
+    if not records:
+        return {}
+
+    totals = np.asarray(
+        [int(record["features"]["합계"]) for record in records],
+        dtype=float,
+    )
+    counts = pd.Series(totals.astype(int)).value_counts()
+    mode_sum = int(counts.index[0]) if len(counts) else None
+    mode_count = int(counts.iloc[0]) if len(counts) else 0
+
+    return {
+        "후보조합수": int(len(totals)),
+        "후보합계최소": int(np.min(totals)),
+        "후보합계Q25": int(round(np.quantile(totals, 0.25))),
+        "후보합계중앙": int(round(np.quantile(totals, 0.50))),
+        "후보합계Q75": int(round(np.quantile(totals, 0.75))),
+        "후보합계최대": int(np.max(totals)),
+        "후보합계최빈": mode_sum,
+        "후보합계최빈횟수": mode_count,
+    }
 
 def calculate_v27_core_pattern_score(
     eleven_score_df: pd.DataFrame,
@@ -1992,7 +2016,7 @@ def generate_v27_adaptive_sets(
     minimum_spatial_score: float,
 ):
     """
-    V27.1 FINAL Adaptive Successor + Core Pattern Portfolio
+    V27.2.1 Adaptive Successor + Sum Distribution Portfolio
 
     1) 최종 생존번호 TOP15를 기본 후보로 사용
     2) TOP15에서 가능한 6개 조합을 전수검사
@@ -2156,6 +2180,7 @@ def generate_v27_adaptive_sets(
 
     selected = []
     details = []
+    selected_totals: List[int] = []
     number_usage = {n: 0 for n in range(1, 46)}
 
     # 역할별로 가장 적합한 조합을 순차 선택
@@ -2194,11 +2219,17 @@ def generate_v27_adaptive_sets(
                 anchor_context=anchor_context,
             )
 
+            sum_diversity_penalty = _portfolio_sum_diversity_penalty(
+                total=record["features"]["합계"],
+                selected_totals=selected_totals,
+            )
+
             final = (
                 record["base_quality"] * 0.72
                 + role_fit * 0.28
                 - usage_penalty
                 - overlap_penalty
+                - sum_diversity_penalty
             )
 
             scored.append(
@@ -2221,6 +2252,7 @@ def generate_v27_adaptive_sets(
         combo = best["combo"]
 
         selected.append(combo)
+        selected_totals.append(int(best["features"]["합계"]))
         for n in combo:
             number_usage[n] += 1
 
@@ -2234,6 +2266,7 @@ def generate_v27_adaptive_sets(
                 "합계후속적합도": round(float(best["empirical_fit"]), 2),
                 "균형점수": round(float(best["structure"]), 2),
                 "생존번호수": int(best["survivor_count"]),
+                "합계분산패널티": round(float(sum_diversity_penalty), 2),
             }
         )
 
@@ -2261,6 +2294,7 @@ def generate_v27_adaptive_sets(
                 continue
 
             selected.append(combo)
+            selected_totals.append(int(record["features"]["합계"]))
             selected_keys.add(tuple(combo))
             details.append(
                 {
@@ -2278,6 +2312,8 @@ def generate_v27_adaptive_sets(
             if len(selected) >= int(game_count):
                 break
 
+    sum_diagnostics = _sum_distribution_diagnostics(all_candidates)
+
     summary = {
         "사용생존번호수": int(used_survivor_count),
         "완성게임수": len(selected),
@@ -2292,6 +2328,8 @@ def generate_v27_adaptive_sets(
         "상단표본수": anchor_context.get("상단표본수"),
         "상단대표합계": anchor_context.get("상단대표합계"),
         "역할": roles,
+        "최종선택합계": selected_totals[:int(game_count)],
+        **sum_diagnostics,
     }
 
     return selected[:int(game_count)], details[:int(game_count)], summary
@@ -2301,7 +2339,7 @@ def generate_v27_adaptive_sets(
 # 제목
 # =========================================================
 
-st.title("🎯 LOTTO GPT V27.1 FINAL Professional")
+st.title("🎯 LOTTO GPT V27.2.1 SUM-DIVERSITY HOTFIX")
 st.markdown("""
 <div style="background:#09192f;
 padding:18px;
@@ -2319,7 +2357,7 @@ margin-bottom:18px;">
 </h2>
 
 <h3 style="color:white;">
-LOTTO GPT V27.1 FINAL PROFESSIONAL
+LOTTO GPT V27.2.1 SUM-DIVERSITY HOTFIX
 </h3>
 
 </td>
@@ -2383,7 +2421,7 @@ box-shadow:0 0 20px rgba(251,191,36,.4);
 </h2>
 
 <h4 style="color:white;">
-LOTTO GPT V27.1 FINAL PROFESSIONAL
+LOTTO GPT V27.2.1 SUM-DIVERSITY HOTFIX
 </h4>
 
 <hr>
@@ -2918,7 +2956,7 @@ else:
                 )
 
                 # ============================================================
-                # V27.1 FINAL - 최신 합계수열 유사사례 → 후속번호 가중
+                # V27.2.1 - 최신 합계수열 유사사례 → 후속번호 가중
                 # ============================================================
                 (
                     sum_sequence_scores,
@@ -2944,7 +2982,7 @@ else:
                 )
 
                 # ============================================================
-                # V27.1 FINAL - 핵심패턴 보강 레이어
+                # V27.2.1 - 핵심패턴 보강 레이어
                 # 기존 슬라이더의 기본 가중치를 그대로 사용합니다.
                 # ============================================================
                 core_pattern_weights = {
@@ -3191,7 +3229,7 @@ else:
                 st.divider()
 
                 generate_button = st.button(
-                    "🚀 V27.2 FINAL 후속패턴 추천 생성",
+                    "🚀 V27.2.1 SUM-DIVERSITY 추천 생성",
                     use_container_width=True,
                     type="primary",
                 )
@@ -3233,13 +3271,65 @@ else:
                         "조합 품질점수에 가중하는 방식으로 적용됩니다."
                     )
 
+                    with st.expander(
+                        "🧪 V27.2.1 합계분포 진단 - BASELINE 가중치 변경 없음",
+                        expanded=False,
+                    ):
+                        diag_cols = st.columns(4)
+                        diag_cols[0].metric(
+                            "동일합계 후속표본",
+                            f"{anchor_sum_context.get('정확일치표본수', 0)}회",
+                        )
+                        diag_cols[1].metric(
+                            "후속합계 중앙",
+                            anchor_sum_context.get("후속합계중앙", "-"),
+                        )
+                        diag_cols[2].metric(
+                            "후속합계 Q25",
+                            anchor_sum_context.get("후속합계Q25", "-"),
+                        )
+                        diag_cols[3].metric(
+                            "후속합계 Q75",
+                            anchor_sum_context.get("후속합계Q75", "-"),
+                        )
+
+                        st.write(
+                            "반복모드:",
+                            anchor_sum_context.get("반복모드합계", "-"),
+                            "/",
+                            anchor_sum_context.get("반복모드횟수", 0),
+                            "회",
+                        )
+                        st.write(
+                            "후보조합 합계분포:",
+                            {
+                                "최소": set_summary.get("후보합계최소"),
+                                "Q25": set_summary.get("후보합계Q25"),
+                                "중앙": set_summary.get("후보합계중앙"),
+                                "Q75": set_summary.get("후보합계Q75"),
+                                "최대": set_summary.get("후보합계최대"),
+                                "최빈": set_summary.get("후보합계최빈"),
+                            },
+                        )
+                        st.write(
+                            "최종 선택 합계:",
+                            set_summary.get("최종선택합계", []),
+                        )
+                        st.write(
+                            "역할별 soft target:",
+                            set_summary.get("역할", []),
+                        )
+                        st.caption(
+                            "※ Q25/Q50/Q75 및 반복 mode는 목표값 강제가 아니라 역할별 soft target입니다."
+                        )
+
                     if len(combinations) < int(game_count):
                         st.warning(
                             f"요청 {game_count}게임 중 {len(combinations)}게임만 생성되었습니다."
                         )
                     else:
                         st.success(
-                            "✅ V27.2 FINAL 적응형 후속패턴 5게임 생성 완료"
+                            "✅ V27.2.1 합계분포·포트폴리오 분산 5게임 생성 완료"
                         )
 
                     if not combinations:
@@ -3250,7 +3340,7 @@ else:
 
                     else:
                         st.subheader(
-                            f"🎯 V27.2 FINAL 추천 조합 {len(combinations)}게임"
+                            f"🎯 V27.2.1 추천 조합 {len(combinations)}게임"
                         )
 
                         for index, combination in enumerate(
@@ -3357,6 +3447,10 @@ else:
                                 f"홀짝 {local_features['홀수수']}:{local_features['짝수수']} · "
                                 f"저고 {local_features['저번호수']}:{local_features['고번호수']} · "
                                 f"구간 {section_text}"
+                            )
+
+                            st.caption(
+                                f"역할 {role_name} · soft target {role_target}"
                             )
 
                             st.caption(
